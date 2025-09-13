@@ -1,0 +1,3 @@
+[submodule "FlashRAG"]
+	path = FlashRAG
+	url = git@github.com:ninehills/FlashRAG.git
