@@ -31,6 +31,7 @@ pip install -e .
 参见 data/MultiHop-RAG/README.md
 
 todo: 
+1. 增加中文BM25搜索
 
 ## 2. Agent DeepSearch 实现
 

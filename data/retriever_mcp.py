@@ -187,14 +187,22 @@ elif args.bm25_index_path:
 else:
     raise ValueError("Must specify either --vector_index_path or --bm25_index_path")
 
-def format_retrieval_results(docs, scores):
+def format_retrieval_results(docs, scores, with_meta=False):
     """格式化检索结果，处理score信息"""
     formatted_results = []
     for doc, score in zip(docs, scores):
-        formatted_results.append({
-            "chunk": doc,
-            "score": float(score)  # 最终score放在顶层
-        })
+        if isinstance(doc, str):
+            doc = {"contents": doc, "id": ""}
+        metadata = doc.get("metadata", {})
+        result = {
+            "chunk": doc.get("contents", ""),
+            "chunk_id": doc.get("id", ""),
+            "score": float(score)
+        }
+        # 如果需要返回metadata且doc是字典类型
+        if with_meta:
+            result['metadata'] = metadata
+        formatted_results.append(result)
 
     return formatted_results
 
@@ -204,12 +212,13 @@ mcp = FastMCP(name="retrieval mcp")
     name="retrieve",
     description="retrieve relevant chunks from the corpus",
 )
-def retrieve(query: str) -> list:
+def retrieve(query: str, with_meta: bool = False) -> list:
     """
     Retrieve relevant chunks from the corpus.
 
     Args:
         query (str): The query string to search for.
+        with_meta (bool): Whether to include metadata in the results. Defaults to False.
 
     Returns:
         list: A list of dictionaries containing the retrieved chunks and their metadata.
@@ -224,7 +233,7 @@ def retrieve(query: str) -> list:
             scores = [0.0] * len(docs)
         
         # 格式化结果
-        formatted_results = format_retrieval_results(docs, scores)
+        formatted_results = format_retrieval_results(docs, scores, with_meta)
 
         logging.info(f"Query '{query}' retrieved {len(formatted_results)} results")
         return formatted_results
@@ -237,12 +246,13 @@ def retrieve(query: str) -> list:
     name="batch_retrieve",
     description="retrieve relevant chunks for multiple queries",
 )
-def batch_retrieve(queries: list) -> list:
+def batch_retrieve(queries: list, with_meta: bool = False) -> list:
     """
     Retrieve relevant chunks for multiple queries.
 
     Args:
         queries (list): List of query strings.
+        with_meta (bool): Whether to include metadata in the results. Defaults to False.
 
     Returns:
         list: A list of lists, each containing retrieved chunks for the corresponding query.
@@ -259,7 +269,7 @@ def batch_retrieve(queries: list) -> list:
         # 格式化结果
         formatted_results = []
         for query_docs, query_scores in zip(all_docs, all_scores):
-            query_results = format_retrieval_results(query_docs, query_scores)
+            query_results = format_retrieval_results(query_docs, query_scores, with_meta)
             formatted_results.append(query_results)
         
         logging.info(f"Batch retrieval for {len(queries)} queries completed")

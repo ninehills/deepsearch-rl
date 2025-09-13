@@ -68,7 +68,7 @@ if __name__ == "__main__":
         for i, chunk in enumerate(chunks):
             metadata["doc_chunk_id"] = i
             chunked_doc = {
-                "id": current_chunk_id,
+                "id": str(current_chunk_id),
                 "contents": title + "\n" + chunk.text,
                 "metadata": metadata,
             }

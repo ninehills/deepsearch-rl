@@ -35,7 +35,7 @@ python -m flashrag.retriever.index_builder \
 python ../retriever_mcp.py \
     --vector_index_path _data/e5_Flat.index \
     --bm25_index_path _data/bm25/ \
-    --retrieval_model_path ../wiki_retriever_mcp/_data/e5-base-v2 \
+    --model_path ../wiki_retriever_mcp/_data/e5-base-v2 \
     --instruction "query: " \
     --corpus_path _data/chunks.jsonl \
     --use_multi_retriever \
