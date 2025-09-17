@@ -41,7 +41,7 @@ python ../retriever_mcp.py \
     --use_multi_retriever \
     --merge_method rrf \
     --device cpu \
-    --top_k 5
+    --top_k 3
 
 
 # Debug

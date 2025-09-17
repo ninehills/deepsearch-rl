@@ -206,11 +206,12 @@ def format_retrieval_results(docs, scores, with_meta=False):
 
     return formatted_results
 
-mcp = FastMCP(name="retrieval mcp")
+mcp = FastMCP(name="retrieval_server")
 
 @mcp.tool(
     name="retrieve",
     description="retrieve relevant chunks from the corpus",
+    enabled=False,
 )
 def retrieve(query: str, with_meta: bool = False) -> list:
     """
@@ -281,14 +282,14 @@ def batch_retrieve(queries: list, with_meta: bool = False) -> list:
 
 if __name__ == "__main__":
     logging.info(f"Starting MCP server on {args.host}:{args.port}")
-    mcp.run(transport="streamable-http", host=args.host, port=args.port)
+    mcp.run(transport="sse", host=args.host, port=args.port)
     logging.info("MCP Server started successfully.")
     
     config = f"""{{
     "mcpServers": {{
         "retrieval_server": {{
-            "type": "streamable-http",
-            "url": "http://<ip>:{args.port}/mcp"
+            "type": "sse",
+            "url": "http://<ip>:{args.port}/sse"
         }}
     }}
 }}"""

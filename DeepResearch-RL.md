@@ -1,5 +1,12 @@
 # Deep Research RL 实现
 
+## 0. DeepSearch vs DeepResearch
+
+- DeepSearch: 产品定位为搜索问答，Plan + (Search + Reflect) x N + Final Answer，可以用单 Agent 实现，也可以拆分为多个 Agent
+- DeepResearch：产品定位为报告写作，比 DeepSearch 运行时间更久，采集的信息更多，报告更丰富（包含多模态信息）。
+
+本项目会实现单 Agent 的 DeepSearch，甚至简化到 Plan 都没有（可以通过增加 Plan Agent或者 Plan Tool的方式增加）
+
 ## 1. Deep Search 复现
 
 ### 1.1 工具调用复现方案
@@ -115,6 +122,7 @@ TODO，同 SFT 训练，但不需要轨迹。
 ### 3.3 其他工具
 - https://github.com/AgentOps-AI/agentops Trace
 - https://github.com/SkyworkAI/DeepResearchAgent 基于SmolAgents的DeepResearch 多Agent实现，不做训练的话价格足够简单。
+- https://github.com/openai/openai-agents-python/tree/main/examples/research_bot OpenAI Agents SDK 实现的简单的 DeepResearch Bot
 
 ### 3.4 相关论文
 SFR-DeepResearch: Towards Effective Reinforcement Learning for Autonomously Reasoning Single Agents
