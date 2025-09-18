@@ -38,7 +38,7 @@
 
 支持 Tool Calling 的模型（包括小参数用于训练的模型和大参数用于实现对比效果的模型）
 1. **旗舰模型**：Kimi-K2、DeepSeek-V3-0324、Qwen3-235B-2507-Instruct、GLM-4.5
-2. **小参数模型**：Qwen3-4B-Instruct-2507、Qwen3-4B-Thinking-2507、Qwen3-4B-Base、Qwen2.5-1.5B-Instruct
+2. **小参数模型**：Qwen3-4B-Instruct-2507、Qwen3-4B-Thinking-2507、Qwen3-4B-Base、Qwen3-1.7B
 	- Thinking 的用于训练 Reasoning Tool Calling，或者仅是利用其模板。
 
 ### 2.2 Agent框架搭建

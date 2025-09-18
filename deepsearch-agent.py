@@ -13,7 +13,8 @@ import dotenv
 from agents import (
     Agent,
     Runner,
-    set_tracing_disabled
+    set_tracing_disabled,
+    set_trace_processors,
 )
 from agents.extensions.models.litellm_model import LitellmModel
 from agents.mcp import MCPServerSse
@@ -22,7 +23,6 @@ from agents.model_settings import ModelSettings
 from utils import extract_answer
 
 dotenv.load_dotenv()
-set_tracing_disabled(True)
 
 if os.getenv("AGENTOPS_API_KEY"):
     # AgentOps Enabled
@@ -32,6 +32,17 @@ if os.getenv("AGENTOPS_API_KEY"):
     except ImportError:
         print("AgentOps not installed. Please install it with 'pip install agentops'")
 
+if os.getenv("OPIK_BASE_URL"):
+    print("opik base url: ", os.getenv("OPIK_BASE_URL"))
+    try:
+        from opik.integrations.openai.agents import OpikTracingProcessor
+        set_trace_processors(processors=[OpikTracingProcessor(
+            project_name="deepsearch-agent",
+        )])
+    except ImportError:
+        print("Opik not installed. Please install it with 'pip install opik'")
+else:
+    set_tracing_disabled(True)
 
 AGENT_PROMPTS = {
     "MultiHop-RAG": """You are an assistant who answers questions using retrieval_server. Answer the question using only the retrieved passages. Verify your answer directly against the text.
