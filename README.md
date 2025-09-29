@@ -5,6 +5,7 @@ DeepSearch-RL is a reinforcement learning project for train a RAG Agent.
 ## Setup Environment
 
 ```bash
+git submodule update --init --recursive
 conda create -n deepsearch-rl python=3.12
 conda activate deepsearch-rl
 python -m pip install --upgrade pip
@@ -43,6 +44,7 @@ pip install -r requirements.txt
 
 ```bash
 cd data/MultiHop-RAG/
+# follow the README.md to prepare data.
 python ../retriever_mcp.py \
     --vector_index_path _data/e5_Flat.index \
     --bm25_index_path _data/bm25/ \
@@ -55,6 +57,8 @@ python ../retriever_mcp.py \
     --top_k 3
 ```
 
+TODO：优化 Search MCP 的返回，更非结构一些。
+
 ## 2. Agent DeepSearch 实现 & 评测
 
 基于OpenAI Agents SDK 开发最简单的 DeepSearch 实现。
@@ -63,20 +67,12 @@ python ../retriever_mcp.py \
 
 ```bash
 # 需要对应的模型支持 Function callings
-model="z-ai/glm-4.5"
-model_remove_slash=${model//\//-}
-python deepsearch-agent.py run --endpoint https://openrouter.ai/api/v1 --api-key <api_key> --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/"$model_remove_slash"
+# 写入api_key base_url 到 .env
+model="cerebras/qwen-3-235b-a22b-instruct-2507"
+# 将 model 中的 /: 替换为 -
+model_name=`echo $model | tr '/:' '-'`
+python deepsearch-agent.py run --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/"$model_name" --sample 1
 ```
-
-MultiHop-RAG 数据集（200条验证集）评测结果
-
-| 模型 | topK | chunk_size(tokens) | 结果（F1） |
-| --- | --- | --- | --- |
-| qwen3-30b-a3b-instruct-2507 | 3 | 500 | 0.601 |
-| kimi-k2-0905 | 3 | 500 | 0.513 |
-| gpt-4o-mini | 3 | 500 | 0.595 |
-| deepseek-chat-v3-0324 | 3 | 500 | 0.493 |
-
 
 小模型启动命令：
 
@@ -84,8 +80,8 @@ MultiHop-RAG 数据集（200条验证集）评测结果
 vllm serve models/Qwen3-4B-Instruct-2507 --max-model-len 90000 --enable-auto-tool-choice --tool-call-parser hermes
 
 model="models/Qwen3-4B-Instruct-2507"
-model_remove_slash=${model//\//-}
-python deepsearch-agent.py run --endpoint http://localhost:8000/v1 --api-key EMPTY --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/"$model_remove_slash"
+model_name=`echo $model | tr '/:' '-'`
+python deepsearch-agent.py run --base_url http://localhost:8000/v1 --api_key EMPTY --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/"$model_name"
 
 vllm serve models/Qwen3-4B-Thinking-2507 --max-model-len 90000 --enable-auto-tool-choice --tool-call-parser hermes --reasoning-parser deepseek_r1
 model="models/Qwen3-4B-Thinking-2507"
@@ -97,9 +93,9 @@ model="models/Qwen3-1.7B"
 
 | 模型 | topK | chunk_size(tokens) | 结果（F1） |
 | --- | --- | --- | --- |
-| Qwen3-4B-Instruct-2507 | 3 | 500 | 0.499 |
-| Qwen3-4B-Thinking-2507 | 3 | 500 | 0.444 |
-| Qwen3-1.7B | 3 | 500 | 0.375 |
+| Qwen3-4B-Instruct-2507 | 3 | 200 | 0.435 |
+| Qwen3-1.7B | 3 | 200 | 0.410 |
+| openrouter/qwen/qwen3-30b-a3b-instruct-2507 | 3 | 200 | 0.583 |
 
 Qwen3-1.7B 使用non-thinking模板，但是第二轮还是会进入thinking状态
 

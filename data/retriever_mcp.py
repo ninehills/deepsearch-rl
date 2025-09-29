@@ -210,8 +210,8 @@ mcp = FastMCP(name="retrieval_server")
 
 @mcp.tool(
     name="retrieve",
-    description="retrieve relevant chunks from the corpus",
-    enabled=False,
+    description="retrieve relevant chunks from the corpus, with_meta MUST False",
+    enabled=True,
 )
 def retrieve(query: str, with_meta: bool = False) -> list:
     """
@@ -245,7 +245,8 @@ def retrieve(query: str, with_meta: bool = False) -> list:
 
 @mcp.tool(
     name="batch_retrieve",
-    description="retrieve relevant chunks for multiple queries",
+    description="retrieve relevant chunks for multiple queries, with_meta MUST False",
+    enabled=False
 )
 def batch_retrieve(queries: list, with_meta: bool = False) -> list:
     """

@@ -8,6 +8,7 @@ import os
 import asyncio
 from pathlib import Path
 from typing import Any
+from openai import AsyncOpenAI
 
 import dotenv
 from agents import (
@@ -17,6 +18,7 @@ from agents import (
     set_trace_processors,
 )
 from agents.extensions.models.litellm_model import LitellmModel
+from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.mcp import MCPServerSse
 from agents.model_settings import ModelSettings
 
@@ -58,11 +60,12 @@ Repeat as needed. When done, wrap your final, concise answer in <answer> tags.""
 }
 
 class DeepSearchAgent:
-    def __init__(self, retriever_mcp_server_url: str, model: str, endpoint: str, prompt_name: str = "MultiHop-RAG",
+    def __init__(self, retriever_mcp_server_url: str, model: str, base_url: str, prompt_name: str = "MultiHop-RAG",
         api_key: str = os.getenv("OPENAI_API_KEY", ""), max_concurrent: int = 5, max_retries: int = 3) -> None:
         self.retriever_mcp_server_url = retriever_mcp_server_url
-        self.model = "openai/" + model
-        self.endpoint = endpoint
+        # self.model = "openai/" + model
+        self.model_name = model
+        self.base_url = base_url
         self.api_key = api_key
         self.max_concurrent = max_concurrent
         self.max_retries = max_retries
@@ -70,9 +73,16 @@ class DeepSearchAgent:
         if prompt_name not in AGENT_PROMPTS:
             raise ValueError(f"prompt_name must be one of {list(AGENT_PROMPTS.keys())}")
         self.agent_prompt = AGENT_PROMPTS[prompt_name]
-
-        print(f"model: {self.model}, base_url: {self.endpoint}, prompt: {prompt_name}")
-        self.litellm_model = LitellmModel(model=self.model, base_url=self.endpoint, api_key=self.api_key)
+        
+        print(f"model: {self.model_name}, base_url: {self.base_url}, prompt: {prompt_name}")
+        # self.model = LitellmModel(model=self.model_name, base_url=self.endpoint, api_key=self.api_key)
+        self.model = OpenAIChatCompletionsModel(
+            model=self.model_name,
+            openai_client = AsyncOpenAI(
+                base_url=self.base_url,
+                api_key=self.api_key,
+            )
+        )
         self.model_settings = ModelSettings(
             max_tokens=4096,
             temperature=0.7,
@@ -90,7 +100,7 @@ class DeepSearchAgent:
                 params={"url": self.retriever_mcp_server_url},
             ) as server:
                 agent = Agent(
-                    model=self.litellm_model,
+                    model=self.model,
                     model_settings=self.model_settings,
                     name="Assistant",
                     instructions=self.agent_prompt,
@@ -167,7 +177,7 @@ async def run_batch_evaluation(args) -> None:
     agent = DeepSearchAgent(
         retriever_mcp_server_url="http://127.0.0.1:8099/sse",
         model=args.model,
-        endpoint=args.endpoint,
+        base_url=args.base_url or os.getenv("OPENAI_BASE_URL", ""),
         prompt_name=args.prompt_name,
         api_key=args.api_key or os.getenv("OPENAI_API_KEY", ""),
         max_concurrent=5,
@@ -236,8 +246,8 @@ def main():
     run_parser.add_argument('--prompt-name', choices=list(AGENT_PROMPTS.keys()), default='MultiHop-RAG', help='Prompt name')
     run_parser.add_argument('--sample', type=int, default=0, help='Sample size (0 = all)')
     run_parser.add_argument('--model', default='gpt-4o-mini', help='Model name')
-    run_parser.add_argument('--endpoint', default='https://openrouter.ai/api/v1', help='API endpoint')
-    run_parser.add_argument('--api-key', help='API key (if not set, read from .env)')
+    run_parser.add_argument('--base_url', help='API endpoint, (if not set, read from .env)')
+    run_parser.add_argument('--api_key', help='API key (if not set, read from .env)')
     run_parser.add_argument('--do_eval', action='store_true', help='Run evaluation')
     run_parser.add_argument('--output_dir', default='output/', help='Output directory')
 
