@@ -8,7 +8,7 @@ import os
 import asyncio
 from pathlib import Path
 from typing import Any
-from openai import AsyncOpenAI
+from openai_trace import AsyncOpenAITrace
 
 import dotenv
 from agents import (
@@ -17,7 +17,6 @@ from agents import (
     set_tracing_disabled,
     set_trace_processors,
 )
-from agents.extensions.models.litellm_model import LitellmModel
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.mcp import MCPServerSse
 from agents.model_settings import ModelSettings
@@ -61,7 +60,8 @@ Repeat as needed. When done, wrap your final, concise answer in <answer> tags.""
 
 class DeepSearchAgent:
     def __init__(self, retriever_mcp_server_url: str, model: str, base_url: str, prompt_name: str = "MultiHop-RAG",
-        api_key: str = os.getenv("OPENAI_API_KEY", ""), max_concurrent: int = 5, max_retries: int = 3) -> None:
+        api_key: str = os.getenv("OPENAI_API_KEY", ""), max_concurrent: int = 5, max_retries: int = 3,
+        trace_file: str = None) -> None:
         self.retriever_mcp_server_url = retriever_mcp_server_url
         # self.model = "openai/" + model
         self.model_name = model
@@ -69,19 +69,27 @@ class DeepSearchAgent:
         self.api_key = api_key
         self.max_concurrent = max_concurrent
         self.max_retries = max_retries
+        self.trace_file = trace_file
 
         if prompt_name not in AGENT_PROMPTS:
             raise ValueError(f"prompt_name must be one of {list(AGENT_PROMPTS.keys())}")
         self.agent_prompt = AGENT_PROMPTS[prompt_name]
-        
+
         print(f"model: {self.model_name}, base_url: {self.base_url}, prompt: {prompt_name}")
+        if self.trace_file:
+            print(f"trace file: {self.trace_file}")
+
         # self.model = LitellmModel(model=self.model_name, base_url=self.endpoint, api_key=self.api_key)
+        # Default to using trace functionality
+        openai_client = AsyncOpenAITrace(
+            base_url=self.base_url,
+            api_key=self.api_key,
+            trace_file=self.trace_file or "openai_trace.log"
+        )
+
         self.model = OpenAIChatCompletionsModel(
             model=self.model_name,
-            openai_client = AsyncOpenAI(
-                base_url=self.base_url,
-                api_key=self.api_key,
-            )
+            openai_client=openai_client
         )
         self.model_settings = ModelSettings(
             max_tokens=4096,
@@ -174,6 +182,10 @@ async def run_batch_evaluation(args) -> None:
         print(f"Using all {len(data)} items")
 
     # Initialize agent
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(exist_ok=True)
+    trace_file = output_dir / "openai_trace.log"
+
     agent = DeepSearchAgent(
         retriever_mcp_server_url="http://127.0.0.1:8099/sse",
         model=args.model,
@@ -182,6 +194,7 @@ async def run_batch_evaluation(args) -> None:
         api_key=args.api_key or os.getenv("OPENAI_API_KEY", ""),
         max_concurrent=5,
         max_retries=3,
+        trace_file=trace_file,
     )
 
     # Run batch processing
@@ -189,9 +202,6 @@ async def run_batch_evaluation(args) -> None:
     results = await agent.batch_run(data)
 
     # Save results
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(exist_ok=True)
-
     output_file = output_dir / "results.jsonl"
     save_jsonl(results, str(output_file))
     print(f"Results saved to: {output_file}")

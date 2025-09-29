@@ -9,3 +9,5 @@ verl
 numpy<2.0.0
 agentops==0.4.21
 chonkie==1.2.1
+ms_swift==3.8.2
+trackio

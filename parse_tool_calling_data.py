@@ -1,0 +1,27 @@
+import json
+from transformers import AutoTokenizer
+from trl import SFTTrainer, apply_chat_template
+import difflib
+
+trajectory_file = "sample/trajectory.jsonl"
+with open(trajectory_file, 'r') as f:
+    dataset = [json.loads(line) for line in f]
+
+tokenizer = AutoTokenizer.from_pretrained("models/Qwen3-4B-Instruct-2507")
+
+example = dataset[0]
+
+#print("vllm tool parse")
+#print("=============")
+#print('<|im_start|>system\nYou are an assistant who answers questions using retrieval_server. Answer the question using only the retrieved passages. Verify your answer directly against the text.\n\nAfter each search:\n- Summarize findings.\n- Decide if info is sufficient.\n  - If sufficient: reply in <answer>...</answer> with your answer. The answer must be extremely concise: a single word or entity.\n  - If not: reply <answer>Insufficient Information</answer>.\n- Explain your reasoning for the chosen action.\n\nRepeat as needed. When done, wrap your final, concise answer in <answer> tags.\n\n# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>\n{"type": "function", "function": {"name": "retrieve", "description": "retrieve relevant chunks from the corpus, with_meta MUST False", "parameters": {"properties": {"query": {"title": "Query", "type": "string"}, "with_meta": {"default": false, "title": "With Meta", "type": "boolean"}}, "required": ["query"], "type": "object"}}}\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{"name": <function-name>, "arguments": <args-json-object>}\n</tool_call><|im_end|>\n<|im_start|>user\nDoes \'The Verge\' article suggest that Google\'s deals with companies like Apple are unnecessary due to a plethora of alternatives, while \'The Age\' and \'TechCrunch\' articles imply Google\'s actions are primarily driven by profit maximization and anticompetitive behavior, respectively?<|im_end|>\n<|im_start|>assistant\n<tool_call>\n{"name": "retrieve", "arguments": {"query": "The Verge article suggests that Google\'s deals with companies like Apple are unnecessary due to a plethora of alternatives, while \'The Age\' and \'TechCrunch\' articles imply Google\'s actions are primarily driven by profit maximization and anticompetitive behavior, respectively"}}\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\n{"type":"text","text":"[{\\"chunk\\":\\"The best Xbox controller to buy right now\\\\nYou may not realize it, but we’re living in a golden age of gaming controllers. The gamepads on the market now are higher quality, more versatile, and more customizable than anything from just a few console generations ago. If you’re gaming on an Xbox Series X or Series S (or a Windows PC), you now have a plethora of great third-party options from the likes of PowerA, Scuf, Nacon, and Turtle Beach, as well as high-quality first-party controllers. The days of the cheap “little sibling” controller that looked cool but barely worked are over.\\\\n\\",\\"chunk_id\\":\\"5534\\",\\"score\\":0.01639344262295082},{\\"chunk\\":\\"Apple defends Google Search deal in court: ‘There wasn’t a valid alternative’\\\\n\\\\nBellshaw never quite said it, but the DOJ’s implication seemed to be that, essentially, Google is a privacy menace anathema to everything Apple believes is important to its users, but Apple gives it a central place in its platform because Google pays it so handsomely. Bellshaw asked Cue to review some of Apple’s financial filings. Isn’t it true that the ISA represents a significant portion of Apple’s profits, she asked? Cue said that’s not how Apple looks at it because it doesn’t account for all the work Apple did to make its platform so appealing that an agreement like this could work as well as it does.\\\\n\\",\\"chunk_id\\":\\"170\\",\\"score\\":0.01639344262295082},{\\"chunk\\":\\"Michelle Jubelirer on Ice Spice, The Beatles, and reinventing Capitol Music Group: ‘I don’t think any label group has been able to turn things around as quickly as my team and I have done in less than two years.’\\\\n\\\\nHere’s the thing about Ice Spice – her look, her flow, her lyrics, and the collaboration choices she’s made: Taylor Swift, Nikki Minaj, PinkPantheress — are all of paramount importance in her success. She knows precisely who she is and what is right for her to do – and not do. That’s such a rare quality to possess at such a young age, and it serves her well. A plethora of opportunities are coming toward her at warp speed, and she has the instinct to make the right choices at the right time.\\\\n\\\\n“A plethora of opportunities are coming toward her at warp speed, and she has the instinct to make the right choices at the right time.”\\\\n\\",\\"chunk_id\\":\\"3500\\",\\"score\\":0.016129032258064516}]","annotations":null,"meta":null}\n</tool_response><|im_end|>\n<|im_start|>assistant\n')
+transformer_output = tokenizer.apply_chat_template(example["messages"], tokenize=False, tools=example["tools"])
+sft_output = apply_chat_template(example, tokenizer=tokenizer, tools=example["tools"])['text']
+
+diff = difflib.unified_diff(
+    transformer_output.splitlines(keepends=True),
+    sft_output.splitlines(keepends=True),
+    fromfile='Transformer tokenizer',
+    tofile='SFT trainer',
+    lineterm=''
+)
+print(''.join(diff))
