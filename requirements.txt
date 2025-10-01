@@ -3,13 +3,12 @@ faiss-gpu-cu12==1.12.0
 fastmcp==2.12.2
 sentence-transformers==5.1.0
 chonkie==1.2.1
-openai-agents[litellm]==0.3.0
-vllm==0.10.1.1
-verl
+openai-agents[litellm]==0.3.3
 numpy<2.0.0
 agentops==0.4.21
 chonkie==1.2.1
 ms_swift==3.8.2
 liger-kernel==0.6.2
-trackio
+vllm==0.10.1.1
+wandb
 rich

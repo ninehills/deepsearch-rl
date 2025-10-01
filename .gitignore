@@ -209,3 +209,4 @@ _data/
 output/
 outputs/
 models/
+wandb/

@@ -59,9 +59,18 @@ Repeat as needed. When done, wrap your final, concise answer in <answer> tags.""
 }
 
 class DeepSearchAgent:
-    def __init__(self, retriever_mcp_server_url: str, model: str, base_url: str, prompt_name: str = "MultiHop-RAG",
-        api_key: str = os.getenv("OPENAI_API_KEY", ""), max_concurrent: int = 5, max_retries: int = 3,
-        trace_file: str = None) -> None:
+    def __init__(self,
+            retriever_mcp_server_url: str,
+            model: str,
+            base_url: str,
+            prompt_name: str = "MultiHop-RAG",
+            api_key: str = os.getenv("OPENAI_API_KEY", ""),
+            max_concurrent: int = 5,
+            max_retries: int = 3,
+            trace_file: str = None,
+            temperature: float = 0.7,
+            max_tokens: int = 4096,
+        ) -> None:
         self.retriever_mcp_server_url = retriever_mcp_server_url
         # self.model = "openai/" + model
         self.model_name = model
@@ -79,22 +88,24 @@ class DeepSearchAgent:
         if self.trace_file:
             print(f"trace file: {self.trace_file}")
 
-        # self.model = LitellmModel(model=self.model_name, base_url=self.endpoint, api_key=self.api_key)
-        # Default to using trace functionality
-        openai_client = AsyncOpenAITrace(
-            base_url=self.base_url,
-            api_key=self.api_key,
-            trace_file=self.trace_file or "openai_trace.log"
+        self.set_model()
+        self.model_settings = ModelSettings(
+            max_tokens=max_tokens,
+            temperature=temperature,
         )
 
+    def set_model(self, model_name: str = None, base_url: str = None):
+        self.model_name = model_name or self.model_name
+        self.base_url = base_url or self.base_url
         self.model = OpenAIChatCompletionsModel(
             model=self.model_name,
-            openai_client=openai_client
+            openai_client=AsyncOpenAITrace(
+                base_url=self.base_url,
+                api_key=self.api_key,
+                trace_file=self.trace_file or "openai_trace.log"
+            )
         )
-        self.model_settings = ModelSettings(
-            max_tokens=4096,
-            temperature=0.7,
-        )
+        return self.model
     
     async def run(self, question: str) -> dict[str, Any]:
         ret = {

@@ -4,21 +4,17 @@ DeepSearch-RL is a reinforcement learning project for train a RAG Agent.
 
 ## Setup Environment
 
+如下环境用于检索服务、Agent以及模型 SFT 训练。
+
 ```bash
 git submodule update --init --recursive
 conda create -n deepsearch-rl python=3.12
 conda activate deepsearch-rl
 python -m pip install --upgrade pip
 pip install packaging ninja numpy pandas ipython ipykernel gdown wheel setuptools
-# This has to be pinned for VLLM to work.
-pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu128
-pip install flash-attn --no-build-isolation
-# 如果需要很久，去 https://github.com/Dao-AILab/flash-attention/releases 找构建后的版本。
+pip install -r requirements.txt
 
-cd agent-lighting/
-pip install -e .[dev,agent]
-
-cd ../FlashRAG
+cd FlashRAG/
 pip install -e .
 pip install pyseismic-lsr --no-deps
 cd ../
@@ -72,7 +68,7 @@ TODO：优化 Search MCP 的返回，更非结构一些。
 model="openrouter/qwen/qwen3-30b-a3b-instruct-2507"
 # 将 model 中的 /: 替换为 -
 model_name=`echo $model | tr '/:' '-'`
-python deepsearch-agent.py run --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/"$model_name" --sample 1
+python deepsearch_agent.py run --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/"$model_name" --sample 1
 
 # 分析日志，得到抽取的Tool calling 数据集
 python analyze_trajectory.py --output_dir output/multihop-rag/"$model_name" --with_eval
@@ -82,11 +78,12 @@ python analyze_trajectory.py --output_dir output/multihop-rag/"$model_name" --wi
 小模型启动命令：
 
 ```bash
+# vllm 在 deepsearch-rl-vllm 环境中启动，避免冲突
 vllm serve models/Qwen3-4B-Instruct-2507 --max-model-len 90000 --enable-auto-tool-choice --tool-call-parser hermes
 
 model="models/Qwen3-4B-Instruct-2507"
 model_name=`echo $model | tr '/:' '-'`
-python deepsearch-agent.py run --base_url http://localhost:8000/v1 --api_key EMPTY --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/"$model_name"
+python deepsearch_agent.py run --base_url http://localhost:8000/v1 --api_key EMPTY --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/"$model_name"
 
 vllm serve models/Qwen3-4B-Thinking-2507 --max-model-len 90000 --enable-auto-tool-choice --tool-call-parser hermes --reasoning-parser deepseek_r1
 model="models/Qwen3-4B-Thinking-2507"
@@ -107,7 +104,7 @@ model="models/Qwen3-1.7B"
 ```bash
 model="openrouter/qwen/qwen3-235b-a22b-thinking-2507"
 model_name=`echo $model | tr '/:' '-'`
-python deepsearch-agent.py run --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/"$model_name" --sample 1
+python deepsearch_agent.py run --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/"$model_name" --sample 1
 ```
 
 
@@ -125,7 +122,7 @@ python deepsearch-agent.py run --prompt-name "MultiHop-RAG" --dataset ./data/Mul
 model="openrouter/qwen/qwen3-30b-a3b-instruct-2507"
 # 将 model 中的 /: 替换为 -
 model_name=`echo $model | tr '/:' '-'`
-python deepsearch-agent.py run --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/train.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/train/"$model_name"-200 --sample 200
+python deepsearch_agent.py run --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/train.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/train/"$model_name"-200 --sample 200
 
 Evaluation results: {'em': 0.695, 'f1': 0.695, 'acc': 0.695, 'precision': 0.695, 'recall': 0.695}
 
@@ -173,7 +170,7 @@ vllm serve models/Qwen3-4B-Instruct-2507 --max-model-len 32768 --enable-auto-too
 
 model="4b-sft-200"
 model_name=`echo $model | tr '/:' '-'`
-python deepsearch-agent.py run --base_url http://localhost:8000/v1 --api_key EMPTY --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/"$model_name"
+python deepsearch_agent.py run --base_url http://localhost:8000/v1 --api_key EMPTY --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/"$model_name"
 
 python analyze_trajectory.py --output_dir output/multihop-rag/"$model_name" --with_eval
 
@@ -255,7 +252,7 @@ python analyze_trajectory.py --output_dir output/multihop-rag/"$model_name" --wi
 model="openrouter/qwen/qwen3-30b-a3b-instruct-2507"
 # 将 model 中的 /: 替换为 -
 model_name=`echo $model | tr '/:' '-'`
-python deepsearch-agent.py run --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/train.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/train/"$model_name"
+python deepsearch_agent.py run --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/train.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/train/"$model_name"
 
 Evaluation results: {'em': 0.5980475382003395, 'f1': 0.6017025089605734, 'acc': 0.6035653650254669, 'precision': 0.6027164685908319, 'recall': 0.6014936534885601}
 
@@ -379,14 +376,14 @@ vllm serve models/Qwen3-4B-Instruct-2507 --max-model-len 32768 --enable-auto-too
 
 model="4b-sft-cpkt100"
 model_name=`echo $model | tr '/:' '-'`
-python deepsearch-agent.py run --base_url http://localhost:8000/v1 --api_key EMPTY --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/"$model_name"
+python deepsearch_agent.py run --base_url http://localhost:8000/v1 --api_key EMPTY --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/"$model_name"
 Evaluation results: {'em': 0.655, 'f1': 0.6658333333333333, 'acc': 0.66, 'precision': 0.67, 'recall': 0.6641666666666667}
 
 vllm serve models/Qwen3-4B-Instruct-2507 --max-model-len 32768 --enable-auto-tool-choice --tool-call-parser hermes --enable-lora --max-lora-rank 64 --lora-modules 4b-sft-cpkt50=outputs/v4-20250930-115648/checkpoint-50  --enforce-eager
 
 model="4b-sft-cpkt50"
 model_name=`echo $model | tr '/:' '-'`
-python deepsearch-agent.py run --base_url http://localhost:8000/v1 --api_key EMPTY --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/"$model_name"
+python deepsearch_agent.py run --base_url http://localhost:8000/v1 --api_key EMPTY --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/"$model_name"
 Evaluation results: {'em': 0.675, 'f1': 0.6825, 'acc': 0.68, 'precision': 0.685, 'recall': 0.6816666666666668}
 
 
@@ -398,5 +395,34 @@ python analyze_trajectory.py --output_dir output/multihop-rag/"$model_name" --wi
 
 ## 4. 使用 RL 进行模型训练
 
-挑选 Qwen3-1.7B non-thinking 模型，对其进行 RL 训练，使用 Lora 训练
+挑选 Qwen3-1.7B 模型，对其进行 RL 训练，使用 Lora 训练
 
+### 4.1 Agent-Lightning【不支持Lora导致显存不足】
+
+环境安装（和之前的不安装到一起）
+```bash
+conda create -n agent-lightning python=3.12
+conda activate agent-lightning
+pip install torch==2.7.0 torchvision==0.22.0 torchaudio==2.7.0 --index-url https://download.pytorch.org/whl/cu128
+pip install flash-attn --no-build-isolation
+pip install vllm==0.9.2
+pip install verl==0.5.0
+
+cd agent-lightning/
+pip install -e .[dev,agent]
+```
+
+问题：
+- verl 0.5.0 不兼容 vllm + lora:  https://github.com/volcengine/verl/issues/3271
+- 升级 verl 为 main 分支后，agent-lightning 不兼容。
+
+```bash
+wandb login
+shuf data/MultiHop-RAG/_data/val.jsonl  | head -20 > data/MultiHop-RAG/_data/val_mini.jsonl
+
+# 转换 train.jsonl 和 val_mini.jsonl 为 parquet 格式，使用 Python -C
+python convert_jsonl_to_parquet.py  data/MultiHop-RAG/_data/train.jsonl data/MultiHop-RAG/_data/train.parquet
+python convert_jsonl_to_parquet.py  data/MultiHop-RAG/_data/val_mini.jsonl data/MultiHop-RAG/_data/val_mini.parquet
+
+bash -x agent-lightning-train.sh
+```

@@ -4,3 +4,6 @@
 [submodule "agent-lightning"]
 	path = agent-lightning
 	url = git@github.com:microsoft/agent-lightning.git
+[submodule "verl"]
+	path = verl
+	url = https://github.com/volcengine/verl.git
