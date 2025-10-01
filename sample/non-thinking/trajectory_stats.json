@@ -1,0 +1,168 @@
+{
+  "total": 1,
+  "success_count": 0,
+  "failure_count": 1,
+  "success_em": 0,
+  "rounds": {
+    "all": {
+      "mean": 2,
+      "stdev": 0
+    },
+    "success": {
+      "mean": 0,
+      "stdev": 0
+    },
+    "failure": {
+      "mean": 2,
+      "stdev": 0
+    },
+    "distribution": {
+      "all": {
+        "2": 1
+      },
+      "success": {},
+      "failure": {
+        "2": 1
+      }
+    }
+  },
+  "tool_calls": {
+    "all": {
+      "mean": 3,
+      "stdev": 0
+    },
+    "success": {
+      "mean": 0,
+      "stdev": 0
+    },
+    "failure": {
+      "mean": 3,
+      "stdev": 0
+    },
+    "total": 3,
+    "distribution": {
+      "all": {
+        "3": 1
+      },
+      "success": {},
+      "failure": {
+        "3": 1
+      }
+    }
+  },
+  "metrics": {
+    "em": {
+      "mean": 0.0,
+      "stdev": 0
+    },
+    "f1": {
+      "mean": 0,
+      "stdev": 0
+    },
+    "acc": {
+      "mean": 0.0,
+      "stdev": 0
+    },
+    "precision": {
+      "mean": 0,
+      "stdev": 0
+    },
+    "recall": {
+      "mean": 0,
+      "stdev": 0
+    }
+  },
+  "tokens_last_turn": {
+    "prompt": {
+      "all": {
+        "mean": 2564,
+        "stdev": 0
+      },
+      "success": {
+        "mean": 0,
+        "stdev": 0
+      },
+      "failure": {
+        "mean": 2564,
+        "stdev": 0
+      }
+    },
+    "completion": {
+      "all": {
+        "mean": 151,
+        "stdev": 0
+      },
+      "success": {
+        "mean": 0,
+        "stdev": 0
+      },
+      "failure": {
+        "mean": 151,
+        "stdev": 0
+      }
+    },
+    "total": {
+      "all": {
+        "mean": 2715,
+        "stdev": 0
+      },
+      "success": {
+        "mean": 0,
+        "stdev": 0
+      },
+      "failure": {
+        "mean": 2715,
+        "stdev": 0
+      }
+    }
+  },
+  "tokens_all_turns": {
+    "prompt": {
+      "all": {
+        "mean": 2912,
+        "stdev": 0
+      },
+      "success": {
+        "mean": 0,
+        "stdev": 0
+      },
+      "failure": {
+        "mean": 2912,
+        "stdev": 0
+      }
+    },
+    "completion": {
+      "all": {
+        "mean": 240,
+        "stdev": 0
+      },
+      "success": {
+        "mean": 0,
+        "stdev": 0
+      },
+      "failure": {
+        "mean": 240,
+        "stdev": 0
+      }
+    },
+    "total": {
+      "all": {
+        "mean": 3152,
+        "stdev": 0
+      },
+      "success": {
+        "mean": 0,
+        "stdev": 0
+      },
+      "failure": {
+        "mean": 3152,
+        "stdev": 0
+      }
+    }
+  },
+  "reasoning": {
+    "mean": 0,
+    "stdev": 0,
+    "count": 0
+  }
+}

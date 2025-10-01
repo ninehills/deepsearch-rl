@@ -1,0 +1,75 @@
+{
+  "total": 1,
+  "success_em": 0,
+  "success_f1_08": 0,
+  "rounds": {
+    "mean": 2,
+    "stdev": 0,
+    "distribution": {
+      "2": 1
+    }
+  },
+  "tool_calls": {
+    "mean": 1,
+    "stdev": 0,
+    "total": 1,
+    "distribution": {
+      "1": 1
+    }
+  },
+  "metrics": {
+    "em": {
+      "mean": 0.0,
+      "stdev": 0
+    },
+    "f1": {
+      "mean": 0,
+      "stdev": 0
+    },
+    "acc": {
+      "mean": 0.0,
+      "stdev": 0
+    },
+    "precision": {
+      "mean": 0,
+      "stdev": 0
+    },
+    "recall": {
+      "mean": 0,
+      "stdev": 0
+    }
+  },
+  "tokens_last_turn": {
+    "prompt": {
+      "mean": 1036,
+      "stdev": 0
+    },
+    "completion": {
+      "mean": 820,
+      "stdev": 0
+    },
+    "total": {
+      "mean": 1856,
+      "stdev": 0
+    }
+  },
+  "tokens_all_turns": {
+    "prompt": {
+      "mean": 1386,
+      "stdev": 0
+    },
+    "completion": {
+      "mean": 1360,
+      "stdev": 0
+    },
+    "total": {
+      "mean": 2746,
+      "stdev": 0
+    }
+  },
+  "reasoning": {
+    "mean": 2817.5,
+    "stdev": 567.8067452927977,
+    "count": 2
+  }
+}

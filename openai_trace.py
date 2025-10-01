@@ -158,6 +158,7 @@ class AsyncOpenAITrace(AsyncOpenAI):
                         "message": {
                             "role": "assistant",
                             "content": "",
+                            "reasoning": "",
                             "function_call": None,
                             "tool_calls": None
                         },
@@ -167,6 +168,10 @@ class AsyncOpenAITrace(AsyncOpenAI):
                 # Merge delta content
                 if choice.delta and choice.delta.content:
                     choices_map[index]["message"]["content"] += choice.delta.content
+
+                # Merge delta reasoning
+                if choice.delta and hasattr(choice.delta, 'reasoning') and choice.delta.reasoning:
+                    choices_map[index]["message"]["reasoning"] += choice.delta.reasoning
 
                 # Merge tool calls
                 if choice.delta and choice.delta.tool_calls:
