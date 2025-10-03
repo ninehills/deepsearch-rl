@@ -269,6 +269,10 @@ def main():
 
     args = parser.parse_args()
 
+    # 如果output_dir 已经存在，则报错（否则 openai_trace.log 会继续追加，导致统计不准确）
+    if os.path.exists(args.output_dir):
+        raise ValueError(f"Output directory {args.output_dir} already exists. Please choose a different directory.")
+
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
     if args.command == 'run':

@@ -13,6 +13,7 @@ conda activate deepsearch-rl
 python -m pip install --upgrade pip
 pip install packaging ninja numpy pandas ipython ipykernel gdown wheel setuptools
 pip install -r requirements.txt
+pip install flash-attn --no-build-isolation
 
 cd FlashRAG/
 pip install -e .
@@ -98,11 +99,13 @@ python analyze_trajectory.py --output_dir output/"$prompt_name"/"$model_name" --
 ```bash
 vllm serve models/Qwen3-4B-Thinking-2507 --max-model-len 90000 --enable-auto-tool-choice --tool-call-parser hermes --reasoning-parser deepseek_r1
 model="models/Qwen3-4B-Thinking-2507"
+model_name=`echo $model | tr '/:' '-'`
 prompt_name="MultiHop-RAG-NoThink"
 python deepsearch_agent.py run --base_url http://localhost:8000/v1 --api_key EMPTY --prompt-name "$prompt_name" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/"$prompt_name"/"$model_name"
 python analyze_trajectory.py --output_dir output/"$prompt_name"/"$model_name" --with_eval
 
 model="models/Qwen3-4B-Thinking-2507"
+model_name=`echo $model | tr '/:' '-'`
 prompt_name="MultiHop-RAG"
 python deepsearch_agent.py run --base_url http://localhost:8000/v1 --api_key EMPTY --prompt-name "$prompt_name" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/"$prompt_name"/"$model_name"
 python analyze_trajectory.py --output_dir output/"$prompt_name"/"$model_name" --with_eval
@@ -110,7 +113,7 @@ python analyze_trajectory.py --output_dir output/"$prompt_name"/"$model_name" --
 
 | 模型 | Prompt | topK | chunk_size(tokens) | 结果（F1） |
 | --- | --- | --- | --- | --- | 
-| Qwen3-4B-Instruct-2507 | MultiHop-RAG-NoThink | 3 | 200 | 0.505 |
+| Qwen3-4B-Instruct-2507 | MultiHop-RAG-NoThink | 3 | 200 | 0.521 |
 | Qwen3-4B-Instruct-2507 | MultiHop-RAG | 3 | 200 | 0.453 |
 | Qwen3-4B-Thinking-2507 | MultiHop-RAG-NoThink | 3 | 200 | 0.458 |
 | Qwen3-4B-Thinking-2507 | MultiHop-RAG | 3 | 200 | 0.385 |
@@ -131,26 +134,70 @@ python analyze_trajectory.py --output_dir output/"$prompt_name"/"$model_name" --
 
 ```bash
 model="openrouter/qwen/qwen3-30b-a3b-instruct-2507"
-# 将 model 中的 /: 替换为 -
 model_name=`echo $model | tr '/:' '-'`
-python deepsearch_agent.py run --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/train.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/train/"$model_name"
+prompt_name="MultiHop-RAG-NoThink"
+python deepsearch_agent.py run --prompt-name "$prompt_name" --dataset ./data/MultiHop-RAG/_data/train.jsonl --do_eval --model "$model" --output_dir output/train/"$prompt_name"/"$model_name"
+python analyze_trajectory.py --output_dir output/train/"$prompt_name"/"$model_name" --with_eval
 
-Evaluation results: {'em': 0.5980475382003395, 'f1': 0.6017025089605734, 'acc': 0.6035653650254669, 'precision': 0.6027164685908319, 'recall': 0.6014936534885601}
+# 过滤出1504条成功的轨迹
+Evaluation results: {'em': 0.6370967741935484, 'f1': 0.6417889788008634, 'acc': 0.6481324278438031, 'precision': 0.642225
+5234861347, 'recall': 0.6426651305683564}
 
+                         Conversation Dynamics
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┓
+┃ Metric                    ┃         All ┃     Success ┃     Failure ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━┩
+│ Avg Rounds                │ 3.37 ± 0.97 │ 3.26 ± 0.96 │ 3.57 ± 0.96 │
+│ Avg Tool Calls            │ 2.51 ± 0.93 │ 2.37 ± 0.93 │ 2.77 ± 0.89 │
+└───────────────────────────┴─────────────┴─────────────┴─────────────┘
+                    Token Usage (Last Turn)
+┏━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┓
+┃ Metric               ┃        All ┃    Success ┃    Failure ┃
+┡━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━┩
+│ Total                │ 2211 ± 699 │ 2096 ± 687 │ 2415 ± 673 │
+│ Prompt               │ 2176 ± 698 │ 2067 ± 683 │ 2368 ± 683 │
+│ Completion           │    35 ± 59 │    28 ± 60 │    47 ± 55 │
+└──────────────────────┴────────────┴────────────┴────────────┘
+               Token Usage (All Turns - Cumulative)
+┏━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┓
+┃ Metric               ┃         All ┃     Success ┃     Failure ┃
+┡━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━┩
+│ Total                │ 4726 ± 2503 │ 4391 ± 2395 │ 5318 ± 2580 │
+│ Prompt               │ 4594 ± 2471 │ 4271 ± 2362 │ 5163 ± 2556 │
+│ Completion           │    132 ± 78 │    120 ± 74 │    155 ± 81 │
+└──────────────────────┴─────────────┴─────────────┴─────────────┘
 
-# 过滤出1411条成功的轨迹： output/multihop-rag/train/openrouter-qwen-qwen3-30b-a3b-instruct-2507/trajectory_success.jsonl
-python analyze_trajectory.py --output_dir output/multihop-rag/train/"$model_name" --with_eval
-
+                  Round Distribution
+┏━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┓
+┃  Rounds  ┃         All ┃     Success ┃     Failure ┃
+┡━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━┩
+│    2     │ 497 (21.1%) │ 380 (25.3%) │ 117 (13.7%) │
+│    3     │ 824 (35.0%) │ 525 (34.9%) │ 299 (35.1%) │
+│    4     │ 710 (30.1%) │ 436 (29.0%) │ 274 (32.2%) │
+│    5     │ 317 (13.5%) │ 159 (10.6%) │ 158 (18.5%) │
+│    6     │    8 (0.3%) │    4 (0.3%) │    4 (0.5%) │
+└──────────┴─────────────┴─────────────┴─────────────┘
+                 Tool Calls Distribution
+┏━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┓
+┃  Tool Calls  ┃         All ┃     Success ┃     Failure ┃
+┡━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━┩
+│      1       │ 280 (11.9%) │ 263 (17.5%) │   17 (2.0%) │
+│      2       │ 982 (41.7%) │ 608 (40.4%) │ 374 (43.9%) │
+│      3       │ 734 (31.2%) │ 459 (30.5%) │ 275 (32.3%) │
+│      4       │ 337 (14.3%) │ 164 (10.9%) │ 173 (20.3%) │
+│      5       │    9 (0.4%) │    6 (0.4%) │    3 (0.4%) │
+│      6       │   14 (0.6%) │    4 (0.3%) │   10 (1.2%) │
+└──────────────┴─────────────┴─────────────┴─────────────┘
 ```
 
 ### 3.2 Non-Thinking 模型训练和评估
 
-```
-python convert_tool_calling_dataset.py --type swift --input_path output/multihop-rag/train/openrouter-qwen-qwen3-30b-a3b-instruct-2507/trajectory_success.jsonl --output_path output/multihop-rag/train/openrouter-qwen-qwen3-30b-a3b-instruct-2507/trajectory_success_swift.jsonl
+```bash
+python convert_tool_calling_dataset.py --type swift --input_path output/train/MultiHop-RAG-NoThink/openrouter-qwen-qwen3-30b-a3b-instruct-2507/trajectory_success.jsonl  --output_path output/train/MultiHop-RAG-NoThink/openrouter-qwen-qwen3-30b-a3b-instruct-2507/trajectory_success_swift.jsonl
 
 swift sft \
     --model models/Qwen3-4B-Instruct-2507 \
-    --dataset output/multihop-rag/train/openrouter-qwen-qwen3-30b-a3b-instruct-2507/trajectory_success_swift.jsonl \
+    --dataset output/train/MultiHop-RAG-NoThink/openrouter-qwen-qwen3-30b-a3b-instruct-2507/trajectory_success_swift.jsonl\
     --load_from_cache_file true \
     --train_type lora \
     --lora_r 64 \
@@ -159,7 +206,7 @@ swift sft \
     --target_modules all-linear \
     --agent_template hermes \
     --torch_dtype bfloat16 \
-    --num_train_epochs 3 \
+    --num_train_epochs 2 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --learning_rate 1e-4 \
@@ -170,15 +217,15 @@ swift sft \
     --report_to tensorboard \
     --do_eval true \
     --split_dataset_ratio 0.05 \
-    --eval_steps 25 \
+    --eval_steps 10 \
     --save_strategy steps \
-    --save_steps 25 \
-    --save_total_limit 3 \
+    --save_steps 10 \
+    --save_total_limit 10 \
     --logging_steps 1 \
     --max_length 8192 \
     --save_only_model true \
     --packing true \
-    --output_dir outputs \
+    --output_dir output/lora/ \
     --warmup_ratio 0.05 \
     --lr_scheduler_type cosine \
     --attn_impl flash_attn \
@@ -187,36 +234,98 @@ swift sft \
     --use_liger_kernel true
 
 # 启动 tensorboard
-tensorboard --logdir outputs
+tensorboard --logdir output/lora/
 ```
 
 启动推理
 ```bash
-# 使用 --enforce-eager 不加载 CUDA Graph，提升启动速度
-vllm serve models/Qwen3-4B-Instruct-2507 --max-model-len 32768 --enable-auto-tool-choice --tool-call-parser hermes --enable-lora --max-lora-rank 64 --lora-modules 4b-sft-cpkt100=outputs/v4-20250930-115648/checkpoint-100  --enforce-eager
+# 使用 --enforce-eager 不加载 CUDA Graph，提升启动速度,同时可以加载多个lora modules
+vllm serve models/Qwen3-4B-Instruct-2507 --enforce-eager \
+    --max-model-len 32768 --enable-auto-tool-choice --tool-call-parser hermes \
+    --enable-lora --max-lora-rank 64 \
+    --lora-modules 4b-sft-cpkt96=output/lora/v1-20251003-202557/checkpoint-96
 
-model="4b-sft-cpkt100"
+
+model=4b-sft-cpkt96
 model_name=`echo $model | tr '/:' '-'`
-python deepsearch_agent.py run --base_url http://localhost:8000/v1 --api_key EMPTY --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/"$model_name"
-Evaluation results: {'em': 0.655, 'f1': 0.6658333333333333, 'acc': 0.66, 'precision': 0.67, 'recall': 0.6641666666666667}
-
-vllm serve models/Qwen3-4B-Instruct-2507 --max-model-len 32768 --enable-auto-tool-choice --tool-call-parser hermes --enable-lora --max-lora-rank 64 --lora-modules 4b-sft-cpkt50=outputs/v4-20250930-115648/checkpoint-50  --enforce-eager
-
-model="4b-sft-cpkt50"
-model_name=`echo $model | tr '/:' '-'`
-python deepsearch_agent.py run --base_url http://localhost:8000/v1 --api_key EMPTY --prompt-name "MultiHop-RAG" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/multihop-rag/"$model_name"
-Evaluation results: {'em': 0.675, 'f1': 0.6825, 'acc': 0.68, 'precision': 0.685, 'recall': 0.6816666666666668}
-
-
-python analyze_trajectory.py --output_dir output/multihop-rag/"$model_name" --with_eval
-
+prompt_name="MultiHop-RAG-NoThink"
+python deepsearch_agent.py run --base_url http://localhost:8000/v1 --api_key EMPTY --prompt-name "$prompt_name" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/"$prompt_name"/"$model_name"
+python analyze_trajectory.py --output_dir output/"$prompt_name"/"$model_name" --with_eval
 ```
 
-发现大数据量训练的结果还不如小数据量，这主要是因为数据分布其实不太均匀。增加多tools call和多轮次数据，来进行数据平衡，效果会好一些。
+比对微调前后，有较大提升
+
+| 模型 | Prompt | topK | chunk_size(tokens) | 结果（F1） |
+| --- | --- | --- | --- | --- | 
+| Qwen3-4B-Instruct-2507 | MultiHop-RAG-NoThink | 3 | 200 | 0.521 |
+| 4b-sft-cpkt96 | MultiHop-RAG-NoThink |3 | 200 | 0.751 |
+
+比较轮次和工具使用，发现微调后，轮次和工具调用的数据量都有所增长。
+
+```bash
+# 微调前
+                         Conversation Dynamics
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┓
+┃ Metric                    ┃         All ┃     Success ┃     Failure ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━┩
+│ Avg Rounds                │ 2.37 ± 0.70 │ 2.34 ± 0.68 │ 2.39 ± 0.73 │
+│ Avg Tool Calls            │ 1.96 ± 1.04 │ 1.81 ± 1.10 │ 2.11 ± 0.95 │
+└───────────────────────────┴─────────────┴─────────────┴─────────────┘
+                 Round Distribution
+┏━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┓
+┃  Rounds  ┃         All ┃    Success ┃    Failure ┃
+┡━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━┩
+│    2     │ 153 (76.5%) │ 80 (77.7%) │ 73 (75.3%) │
+│    3     │  21 (10.5%) │ 11 (10.7%) │ 10 (10.3%) │
+│    4     │  26 (13.0%) │ 12 (11.7%) │ 14 (14.4%) │
+└──────────┴─────────────┴────────────┴────────────┘
+                Tool Calls Distribution
+┏━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┓
+┃  Tool Calls  ┃        All ┃    Success ┃    Failure ┃
+┡━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━┩
+│      1       │ 88 (44.0%) │ 59 (57.3%) │ 29 (29.9%) │
+│      2       │ 55 (27.5%) │ 18 (17.5%) │ 37 (38.1%) │
+│      3       │ 37 (18.5%) │ 15 (14.6%) │ 22 (22.7%) │
+│      4       │  18 (9.0%) │   9 (8.7%) │   9 (9.3%) │
+│      5       │   2 (1.0%) │   2 (1.9%) │   0 (0.0%) │
+└──────────────┴────────────┴────────────┴────────────┘
+# 微调后
+Conversation Dynamics
+
+| Metric | All | Success | Failure |
+|--------|-----|---------|---------|
+| Avg Rounds | 3.35 ± 0.90 | 3.34 ± 0.94 | 3.41 ± 0.75 |
+| Avg Tool Calls | 2.35 ± 0.90 | 2.34 ± 0.94 | 2.41 ± 0.75 |
+
+Round Distribution
+┏━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┓
+┃  Rounds  ┃        All ┃    Success ┃    Failure ┃
+┡━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━┩
+│    2     │ 33 (16.5%) │ 29 (19.5%) │   4 (7.8%) │
+│    3     │ 87 (43.5%) │ 61 (40.9%) │ 26 (51.0%) │
+│    4     │ 56 (28.0%) │ 39 (26.2%) │ 17 (33.3%) │
+│    5     │ 24 (12.0%) │ 20 (13.4%) │   4 (7.8%) │
+└──────────┴────────────┴────────────┴────────────┘
+                Tool Calls Distribution
+┏━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┓
+┃  Tool Calls  ┃        All ┃    Success ┃    Failure ┃
+┡━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━┩
+│      1       │ 33 (16.5%) │ 29 (19.5%) │   4 (7.8%) │
+│      2       │ 87 (43.5%) │ 61 (40.9%) │ 26 (51.0%) │
+│      3       │ 56 (28.0%) │ 39 (26.2%) │ 17 (33.3%) │
+│      4       │ 24 (12.0%) │ 20 (13.4%) │   4 (7.8%) │
+└──────────────┴────────────┴────────────┴────────────┘
+```
 
 ### 3.3 Thinking 数据合成
 
+TODO：使用 Thinking 模型合成
+
 ### 3.4 Thinking 模型训练和评估
+
+Thinking 模型训练的问题是会Chat Template 会删除掉历史 Thinking 信息，需要将多轮调用打平成单轮调用以保留 Thinking 信息。
+
+分别测试不打平和打平两种实现方式的效果。
 
 
 ## 4. 使用 RL 进行模型训练
