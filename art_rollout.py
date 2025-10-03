@@ -162,7 +162,8 @@ async def rollout(model: art.Model, scenario: Scenario) -> art.Trajectory:
 
     return traj
 
-async def load_model(model_path: str, name: str) -> art.TrainableModel:
+async def load_model(model_path: str, name: str, max_seq_length: int = 8192,
+                     gpu_memory_utilization: float = 0) -> art.TrainableModel:
     # Declare the model
     model = art.TrainableModel(
         name=name,
@@ -171,14 +172,17 @@ async def load_model(model_path: str, name: str) -> art.TrainableModel:
     )
 
     # To run on a T4, we need to override some config defaults.
+    engine_args = art.dev.EngineArgs(
+        enforce_eager=True
+    )
+    if gpu_memory_utilization:
+        engine_args.gpu_memory_utilization = gpu_memory_utilization
+
     model._internal_config = art.dev.InternalModelConfig(
         init_args=art.dev.InitArgs(
-            max_seq_length=8192,
+            max_seq_length=max_seq_length,
         ),
-        engine_args=art.dev.EngineArgs(
-            enforce_eager=True,
-            gpu_memory_utilization=0.5,
-        ),
+        engine_args=engine_args,
     )
 
     # Initialize the server
@@ -194,8 +198,9 @@ async def load_model(model_path: str, name: str) -> art.TrainableModel:
 
     return model
 
-async def rollout_test():
-    model = await load_model("models/Qwen3-4B-Instruct-2507", "qwen3-4b-instruct")
+async def rollout_test(base_model: str, name: str, max_seq_length: int = 8192,
+                       gpu_memory_utilization: float = 0):
+    model = await load_model(base_model, name, max_seq_length, gpu_memory_utilization)
     val_dataset_file = "data/MultiHop-RAG/_data/val_mini.jsonl"
     val_inputs: List[TaskInput] = []
     with open(val_dataset_file, "r") as f:
@@ -208,27 +213,15 @@ async def rollout_test():
         print(json.dumps(traj.for_logging(), ensure_ascii=False, indent=2))
 
 
-async def train(name: str):
+async def train(base_model: str, name: str, max_seq_length: int = 8192,
+                gpu_memory_utilization: float = 0):
     training_config = {
         "groups_per_step": 2,
         "num_epochs": 1,
         "rollouts_per_group": 8,
         "learning_rate": 3e-5,
-        "max_steps": 2000,
     }
-    model = await load_model("models/Qwen3-4B-Instruct-2507", name)
-    model._internal_config = art.dev.InternalModelConfig(
-        init_args=art.dev.InitArgs(
-            max_seq_length=8192,
-        ),
-        engine_args=art.dev.EngineArgs(
-            enforce_eager=True,
-            gpu_memory_utilization=0.5,
-        ),
-        trainer_args=art.dev.TrainerArgs(
-            max_steps=training_config["max_steps"],
-        ),
-    )
+    model = await load_model(base_model, name, max_seq_length, gpu_memory_utilization)
     train_dataset_file = "data/MultiHop-RAG/_data/train.jsonl"
     train_scenarios: List[Scenario] = []
     with open(train_dataset_file, "r") as f:
@@ -283,10 +276,22 @@ async def train(name: str):
 
 if __name__ == "__main__":
     import asyncio
-    import sys
+    import argparse
 
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "test":
-            asyncio.run(rollout_test())
-        elif sys.argv[1] == "train":
-            asyncio.run(train(name=sys.argv[2]))
+    parser = argparse.ArgumentParser(description="ART Rollout and Training")
+    parser.add_argument("mode", choices=["train", "test"], help="Mode to run: train or test")
+    parser.add_argument("base_model", help="Path to the base model")
+    parser.add_argument("model_name", help="Name for the model")
+    parser.add_argument("--max_seq_length", type=int, default=8192, help="Maximum sequence length (default: 8192)")
+    parser.add_argument("--gpu_memory_utilization", type=float, default=0, help="GPU memory utilization (default: 0=auto)")
+
+    args = parser.parse_args()
+
+    if args.mode == "test":
+        asyncio.run(rollout_test(base_model=args.base_model, name=args.model_name,
+                                 max_seq_length=args.max_seq_length,
+                                 gpu_memory_utilization=args.gpu_memory_utilization))
+    elif args.mode == "train":
+        asyncio.run(train(base_model=args.base_model, name=args.model_name,
+                         max_seq_length=args.max_seq_length,
+                         gpu_memory_utilization=args.gpu_memory_utilization))

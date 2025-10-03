@@ -372,5 +372,11 @@ conda activate openpipe-art
 cd ART && pip install -e .[backend]
 pip install "openai-agents==0.3.3"
 
-python art_rollout.py train "qwen3-4b-001"
+# 使用的 GSPO
+python art_rollout.py train "models/Qwen3-4B-Instruct-2507" "qwen3-4b-rlvr-03" --max_seq_length 8192
+# 配置8192 限制就会限制总的轮次，如果输入超长就会400错误，奖励为0
+
+# 默认参数在 https://github.com/OpenPipe/ART/blob/main/src/art/dev/get_model_config.py
+# 通过 https://github.com/OpenPipe/ART/blob/main/src/art/dev/model.py 中的内容进行修改。
+
 ```
