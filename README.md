@@ -426,3 +426,15 @@ python convert_jsonl_to_parquet.py  data/MultiHop-RAG/_data/val_mini.jsonl data/
 
 bash -x agent-lightning-train.sh
 ```
+
+### 4.2 OpenPipe-ART
+
+```bash
+conda create -n openpipe-art python=3.12
+conda activate openpipe-art
+cd ART && pip install -e .[backend]
+pip install "openai-agents==0.3.3"
+
+python art_rollout.py train "qwen3-4b-001"
+```
+

@@ -61,51 +61,25 @@ Repeat as needed. When done, wrap your final, concise answer in <answer> tags.""
 class DeepSearchAgent:
     def __init__(self,
             retriever_mcp_server_url: str,
-            model: str,
-            base_url: str,
+            model: OpenAIChatCompletionsModel,
             prompt_name: str = "MultiHop-RAG",
-            api_key: str = os.getenv("OPENAI_API_KEY", ""),
             max_concurrent: int = 5,
             max_retries: int = 3,
-            trace_file: str = None,
             temperature: float = 0.7,
             max_tokens: int = 4096,
         ) -> None:
         self.retriever_mcp_server_url = retriever_mcp_server_url
-        # self.model = "openai/" + model
-        self.model_name = model
-        self.base_url = base_url
-        self.api_key = api_key
         self.max_concurrent = max_concurrent
         self.max_retries = max_retries
-        self.trace_file = trace_file
 
         if prompt_name not in AGENT_PROMPTS:
             raise ValueError(f"prompt_name must be one of {list(AGENT_PROMPTS.keys())}")
         self.agent_prompt = AGENT_PROMPTS[prompt_name]
-
-        print(f"model: {self.model_name}, base_url: {self.base_url}, prompt: {prompt_name}")
-        if self.trace_file:
-            print(f"trace file: {self.trace_file}")
-
-        self.set_model()
+        self.model = model
         self.model_settings = ModelSettings(
             max_tokens=max_tokens,
             temperature=temperature,
         )
-
-    def set_model(self, model_name: str = None, base_url: str = None):
-        self.model_name = model_name or self.model_name
-        self.base_url = base_url or self.base_url
-        self.model = OpenAIChatCompletionsModel(
-            model=self.model_name,
-            openai_client=AsyncOpenAITrace(
-                base_url=self.base_url,
-                api_key=self.api_key,
-                trace_file=self.trace_file or "openai_trace.log"
-            )
-        )
-        return self.model
     
     async def run(self, question: str) -> dict[str, Any]:
         ret = {
@@ -197,15 +171,21 @@ async def run_batch_evaluation(args) -> None:
     output_dir.mkdir(exist_ok=True)
     trace_file = output_dir / "openai_trace.log"
 
+    model = OpenAIChatCompletionsModel(
+        model=args.model,
+        openai_client=AsyncOpenAITrace(
+            base_url=args.base_url or os.getenv("OPENAI_BASE_URL", ""),
+            api_key=args.api_key or os.getenv("OPENAI_API_KEY", ""),
+            trace_file=trace_file
+        )
+    )
+
     agent = DeepSearchAgent(
         retriever_mcp_server_url="http://127.0.0.1:8099/sse",
-        model=args.model,
-        base_url=args.base_url or os.getenv("OPENAI_BASE_URL", ""),
+        model=model,
         prompt_name=args.prompt_name,
-        api_key=args.api_key or os.getenv("OPENAI_API_KEY", ""),
         max_concurrent=5,
-        max_retries=3,
-        trace_file=trace_file,
+        max_retries=3
     )
 
     # Run batch processing
