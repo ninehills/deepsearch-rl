@@ -139,7 +139,7 @@ async def rollout(model: art.Model, scenario: Scenario) -> art.Trajectory:
             model=model.name,
             openai_client=openai_client
         ),
-        prompt_name='MultiHop-RAG',
+        prompt_name='MultiHop-RAG-NoThink',
         temperature=1.0,
         max_tokens=4096,
     )

@@ -55,7 +55,16 @@ After each search:
   - If not: reply <answer>Insufficient Information</answer>.
 - Explain your reasoning for the chosen action.
 
-Repeat as needed. When done, wrap your final, concise answer in <answer> tags."""
+Repeat as needed. When done, wrap your final, concise answer in <answer> tags.""",
+    "MultiHop-RAG-NoThink": """You are an assistant who answers questions using retrieval_server. Answer the question using only the retrieved passages. Verify your answer directly against the text.
+
+After each search:
+- Decide if info is sufficient.
+  - If sufficient: reply in <answer>...</answer> with your answer. The answer must be extremely concise: a single word or entity.
+  - If not: Generate more refined search queries to gather more relevant information, then perform more search using that queries.
+- Max 5 search iterations.
+
+Repeat as needed. When done, wrap your final, concise answer in <answer> tags. If the answer is not found, reply <answer>Insufficient Information</answer>."""
 }
 
 class DeepSearchAgent:
@@ -184,7 +193,7 @@ async def run_batch_evaluation(args) -> None:
         retriever_mcp_server_url="http://127.0.0.1:8099/sse",
         model=model,
         prompt_name=args.prompt_name,
-        max_concurrent=5,
+        max_concurrent=args.max_concurrent,
         max_retries=3
     )
 
@@ -251,6 +260,7 @@ def main():
     run_parser.add_argument('--api_key', help='API key (if not set, read from .env)')
     run_parser.add_argument('--do_eval', action='store_true', help='Run evaluation')
     run_parser.add_argument('--output_dir', default='output/', help='Output directory')
+    run_parser.add_argument('--max_concurrent', type=int, default=10, help='Max concurrent requests')
 
     # Eval command
     eval_parser = subparsers.add_parser('eval', help='Run evaluation only on existing results')

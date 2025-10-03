@@ -106,6 +106,7 @@ TODO，同 SFT 训练，但不需要轨迹。
 6. https://github.com/MiroMindAI/MiroRL
 
 #### 2.5.3 算力
+
 **N x RTX4090**
 
 ## 3. 其他
