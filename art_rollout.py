@@ -117,7 +117,7 @@ class Scenario(BaseModel):
     split: Literal["train", "val"]
 
 @weave.op
-async def rollout(model: art.Model, scenario: Scenario) -> art.Trajectory:
+async def rollout(model: art.Model, scenario: Scenario, max_tokens: int = 4096) -> art.Trajectory:
     traj = art.Trajectory(
         reward=0.0,
         messages_and_choices=[],
@@ -141,7 +141,7 @@ async def rollout(model: art.Model, scenario: Scenario) -> art.Trajectory:
         ),
         prompt_name='MultiHop-RAG-NoThink',
         temperature=1.0,
-        max_tokens=4096,
+        max_tokens=max_tokens,
     )
 
     ret = await deepsearch_agent.run(scenario.question)
@@ -157,32 +157,40 @@ async def rollout(model: art.Model, scenario: Scenario) -> art.Trajectory:
     if ret["error"]:
         print(f"Agent run error: {ret['error']}")
         return traj.finish()
-    reward = compute_scores(ret["answer"], scenario.golden_answers[0])
-    traj.reward = reward
+    if ret['pred']:
+        # 如果能够解析出答案，格式奖励 0.5
+        format_reward = 0.5
+    else:
+        format_reward = 0.0
+    # 正确性奖励 0-2
+    correct_reward = compute_scores(ret["answer"], scenario.golden_answers[0]) * 2
+    traj.reward = correct_reward + format_reward
 
     return traj
 
-async def load_model(model_path: str, name: str, max_seq_length: int = 8192,
-                     gpu_memory_utilization: float = 0) -> art.TrainableModel:
+async def load_model(args) -> art.TrainableModel:
+    print(f"Loading model: {args}")
     # Declare the model
     model = art.TrainableModel(
-        name=name,
+        name=args.model_name,
         project=PROJECT,
-        base_model=model_path,
+        base_model=args.base_model,
     )
 
     # To run on a T4, we need to override some config defaults.
     engine_args = art.dev.EngineArgs(
-        enforce_eager=True
+        enforce_eager=True,
+        enable_sleep_mode=not args.disable_sleep_mode
     )
-    if gpu_memory_utilization:
-        engine_args.gpu_memory_utilization = gpu_memory_utilization
+    if args.gpu_memory_utilization:
+        engine_args["gpu_memory_utilization"] = args.gpu_memory_utilization
 
     model._internal_config = art.dev.InternalModelConfig(
         init_args=art.dev.InitArgs(
-            max_seq_length=max_seq_length,
+            max_seq_length=args.max_seq_length,
         ),
         engine_args=engine_args,
+        _decouple_vllm_and_unsloth=args.decouple_vllm_and_unsloth,
     )
 
     # Initialize the server
@@ -193,14 +201,28 @@ async def load_model(model_path: str, name: str, max_seq_length: int = 8192,
         path="./.art",
     )
 
+    if args.resume_ckpt:
+        print(f"Resume checkpoint: {args.resume_ckpt}")
+        r_split = args.resume_ckpt.split(":")
+        if len(r_split) != 2:
+            raise ValueError(f"Resume checkpoint format error: {args.resume_ckpt}")
+        resume_model = r_split[0]
+        resume_step = int(r_split[1])
+        # Copy the checkpoint from another model
+        await backend._experimental_fork_checkpoint(
+            model,
+            from_model=resume_model,
+            not_after_step=resume_step,  # Use checkpoint at or before step ${resume_step}
+            verbose=True,
+        )
+
     # Register the model with the local Backend (sets up logging, inference, and training)
     await model.register(backend)
 
     return model
 
-async def rollout_test(base_model: str, name: str, max_seq_length: int = 8192,
-                       gpu_memory_utilization: float = 0):
-    model = await load_model(base_model, name, max_seq_length, gpu_memory_utilization)
+async def rollout_test(args):
+    model = await load_model(args)
     val_dataset_file = "data/MultiHop-RAG/_data/val_mini.jsonl"
     val_inputs: List[TaskInput] = []
     with open(val_dataset_file, "r") as f:
@@ -209,19 +231,18 @@ async def rollout_test(base_model: str, name: str, max_seq_length: int = 8192,
             scenario = Scenario(**data, split="val")
             val_inputs.append(scenario)
     for scenario in val_inputs[:1]:
-        traj = await rollout(model, scenario)
+        traj = await rollout(model, scenario, args.max_tokens)
         print(json.dumps(traj.for_logging(), ensure_ascii=False, indent=2))
 
 
-async def train(base_model: str, name: str, max_seq_length: int = 8192,
-                gpu_memory_utilization: float = 0):
+async def train(args):
     training_config = {
         "groups_per_step": 2,
         "num_epochs": 1,
         "rollouts_per_group": 8,
         "learning_rate": 3e-5,
     }
-    model = await load_model(base_model, name, max_seq_length, gpu_memory_utilization)
+    model = await load_model(args)
     train_dataset_file = "data/MultiHop-RAG/_data/train.jsonl"
     train_scenarios: List[Scenario] = []
     with open(train_dataset_file, "r") as f:
@@ -245,7 +266,7 @@ async def train(base_model: str, name: str, max_seq_length: int = 8192,
         groups = await art.gather_trajectory_groups(
             (
                 art.TrajectoryGroup(
-                    rollout(model, scenario)
+                    rollout(model, scenario, args.max_tokens)
                     for _ in range(training_config["rollouts_per_group"])
                 )
                 for scenario in batch.items
@@ -268,7 +289,13 @@ async def train(base_model: str, name: str, max_seq_length: int = 8192,
             scored_groups,
             config=art.TrainConfig(learning_rate=training_config["learning_rate"]),
             _config=art.dev.TrainConfig(
+                # GSPO
                 importance_sampling_level="sequence",
+                epsilon=3e-4,
+                epsilon_high=4e-4,
+                # TIS
+                truncated_importance_sampling=2.0,
+                # 减少 Logprob 计算所需的内存
                 logprob_calculation_chunk_size=8,
             )
         )
@@ -283,15 +310,15 @@ if __name__ == "__main__":
     parser.add_argument("base_model", help="Path to the base model")
     parser.add_argument("model_name", help="Name for the model")
     parser.add_argument("--max_seq_length", type=int, default=8192, help="Maximum sequence length (default: 8192)")
+    parser.add_argument("--max_tokens", type=int, default=4096, help="Maximum tokens to generate (default: 4096)")
     parser.add_argument("--gpu_memory_utilization", type=float, default=0, help="GPU memory utilization (default: 0=auto)")
+    parser.add_argument("--resume_ckpt", type=str, default=None, help="resume checkpoint, <model_name>:<step> (default: None)")
+    parser.add_argument("--disable_sleep_mode", action="store_true", help="Disable sleep mode (default: enabled)")
+    parser.add_argument("--decouple_vllm_and_unsloth", action="store_true", help="Decouple vLLM and Unsloth (default: disabled)")
 
     args = parser.parse_args()
 
     if args.mode == "test":
-        asyncio.run(rollout_test(base_model=args.base_model, name=args.model_name,
-                                 max_seq_length=args.max_seq_length,
-                                 gpu_memory_utilization=args.gpu_memory_utilization))
+        asyncio.run(rollout_test(args))
     elif args.mode == "train":
-        asyncio.run(train(base_model=args.base_model, name=args.model_name,
-                         max_seq_length=args.max_seq_length,
-                         gpu_memory_utilization=args.gpu_memory_utilization))
+        asyncio.run(train(args))

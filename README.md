@@ -370,13 +370,61 @@ bash -x agent-lightning-train.sh
 conda create -n openpipe-art python=3.12
 conda activate openpipe-art
 cd ART && pip install -e .[backend]
-pip install "openai-agents==0.3.3"
+pip install "openai-agents==0.3.3" flashinfer-python
 
 # 使用的 GSPO
-python art_rollout.py train "models/Qwen3-4B-Instruct-2507" "qwen3-4b-rlvr-03" --max_seq_length 8192
+python art_rollout.py train "models/Qwen3-4B-Instruct-2507" "qwen3-4b-rlvr-110" --max_seq_length 8192 --max_tokens 4096
 # 配置8192 限制就会限制总的轮次，如果输入超长就会400错误，奖励为0
+# max_seq_length - max_tokens 为 prompt_length，超出后 vllm 会报错
 
 # 默认参数在 https://github.com/OpenPipe/ART/blob/main/src/art/dev/get_model_config.py
 # 通过 https://github.com/OpenPipe/ART/blob/main/src/art/dev/model.py 中的内容进行修改。
-
 ```
+
+问题1：OpenPipe-ART 目前有bug，就是训练可能会卡住。具体 issue：
+- https://github.com/OpenPipe/ART/issues/346
+- （猜测）怀疑可能是和Unsloth的 Sleep 模式有关，增加 disable_sleep_mode 尝试解决
+    - 设置无效，这里貌似强制写死为 True：https://github.com/OpenPipe/ART/blob/main/src/art/vllm/engine.py#L46
+    - 修改代码如下
+            
+        ```python
+        diff --git a/src/art/vllm/engine.py b/src/art/vllm/engine.py
+        index 7bba9f0..a0122e4 100644
+        --- a/src/art/vllm/engine.py
+        +++ b/src/art/vllm/engine.py
+        @@ -43,7 +43,7 @@ async def get_llm(args: vllm.AsyncEngineArgs) -> AsyncLLM:
+                replace(
+                    args,
+                    worker_extension_cls=f"{WorkerExtension.__module__}.{WorkerExtension.__qualname__}",
+        -            enable_sleep_mode=True,
+        +            # enable_sleep_mode=True,
+                )
+            )
+            await run_on_workers(llm, patch_allocator)
+        ```
+    - 设置后还是卡住，不进行修改
+- （尝试，失败）使用 --decouple_vllm_and_unsloth 拆分 vllm 和 Unsloth，以验证是否正常。报错 `AssertionError: Expandable segments are not compatible with memory pool.`，需要设置 disable_sleep_mode 为 True（配合代码修改）。还是会卡在 train
+
+问题2: 如何断点续训（数据集也会自动从断点继续）
+
+解决办法：
+1. 直接重复执行命令，会从最后一个step继续训练
+2. 使用如下命令指定 step 继续训练
+```bash
+python art_rollout.py train "models/Qwen3-4B-Instruct-2507" "qwen3-4b-rlvr-04" --max_seq_length 8192 --resume_ckpt "qwen3-4b-rlvr-03:94"
+
+Iterating dataset:   8%|█████▍                                                              | 94/1178 [00:00<?, ?batch/s]
+Gathering trajectory groups with RULER scoring...
+train gather step 94:  94%|████████████████████████▍ | 15/16 [00:13<00:00,  2.91it/s, reward=0.611, completion_token
+```
+
+问题3：`openai.NotFoundError: Error code: 404 - {'detail': 'Not Found'}`
+- 来自 LocalBackend._monitor_openai_server()，是用来监控 OpenAI Server 是否准备的，不影响训练。
+
+问题4：Prompt 经常超限导致模型请求失败，此时奖励为0，和格式正确无法区分。所以增加格式奖励为0.5，正确性奖励为2。
+
+只有正确性奖励（0-1）时的 reward 曲线，可以见到收敛缓慢。
+![](./103.png)
+
+格式奖励（0.5） + 正确性奖励（0-2）时的 reward 曲线
+![](./111.png)
