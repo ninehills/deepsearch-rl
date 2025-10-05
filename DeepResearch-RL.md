@@ -104,6 +104,11 @@ TODO，同 SFT 训练，但不需要轨迹。
 4. https://github.com/Simple-Efficient/RL-Factory 有DeepSearch+MCP 的例子
 5. https://github.com/WooooDyy/AgentGym-RL
 6. https://github.com/MiroMindAI/MiroRL
+7. https://github.com/PrimeIntellect-ai/verifiers/
+8. https://github.com/THUDM/slime/tree/main
+9. https://github.com/WooooDyy/AgentGym
+10. https://github.com/RAGEN-AI/RAGEN
+11. 
 
 #### 2.5.3 算力
 

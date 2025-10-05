@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from utils import compute_scores
+
 try:
     from rich.console import Console
     from rich.table import Table
@@ -226,6 +228,7 @@ def compute_statistics(trajectory_data: List[Dict[str, Any]]) -> Dict[str, Any]:
     acc_scores = []
     precision_scores = []
     recall_scores = []
+    score_list = []
 
     # Token usage - separated for last turn and all turns
     last_turn_prompt_tokens = init_metric_lists()
@@ -302,6 +305,7 @@ def compute_statistics(trajectory_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         acc_scores.append(metric_score.get("acc", 0))
         precision_scores.append(metric_score.get("precision", 0))
         recall_scores.append(metric_score.get("recall", 0))
+        score_list.append(entry.get("Score", 0))
 
         # Collect reasoning lengths
         for msg in messages:
@@ -349,6 +353,7 @@ def compute_statistics(trajectory_data: List[Dict[str, Any]]) -> Dict[str, Any]:
             "acc": {"mean": safe_mean(acc_scores), "stdev": safe_stdev(acc_scores)},
             "precision": {"mean": safe_mean(precision_scores), "stdev": safe_stdev(precision_scores)},
             "recall": {"mean": safe_mean(recall_scores), "stdev": safe_stdev(recall_scores)},
+            "score": {"mean": safe_mean(score_list), "stdev": safe_stdev(score_list)},
         },
         "tokens_last_turn": {
             "prompt": compute_stats(last_turn_prompt_tokens),
@@ -404,6 +409,7 @@ def print_statistics_console(stats: Dict[str, Any], output_dir: str) -> None:
     summary.add_row("Success (F1 ≥ 0.8)", f"{stats['success_count']} ({stats['success_count']/stats['total']*100:.1f}%)")
     summary.add_row("Failure (F1 < 0.8)", f"{stats['failure_count']} ({stats['failure_count']/stats['total']*100:.1f}%)")
     summary.add_row("Success (EM = 1.0)", f"{stats['success_em']} ({stats['success_em']/stats['total']*100:.1f}%)")
+    summary.add_row("Average Score", f"{stats['metrics']['score']['mean']:.3f} ± {stats['metrics']['score']['stdev']:.3f}")
     console.print(summary)
 
     # Performance metrics
@@ -560,7 +566,8 @@ def save_statistics_markdown(stats: Dict[str, Any], output_dir: str, file_path: 
         f"- **Total Questions:** {stats['total']}",
         f"- **Success (F1 ≥ 0.8):** {stats['success_count']} ({stats['success_count']/stats['total']*100:.1f}%)",
         f"- **Failure (F1 < 0.8):** {stats['failure_count']} ({stats['failure_count']/stats['total']*100:.1f}%)",
-        f"- **Success (EM = 1.0):** {stats['success_em']} ({stats['success_em']/stats['total']*100:.1f}%)\n",
+        f"- **Success (EM = 1.0):** {stats['success_em']} ({stats['success_em']/stats['total']*100:.1f}%)",
+        f"- **Average Score:** {stats['metrics']['score']['mean']:.3f} ± {stats['metrics']['score']['stdev']:.3f}\n",
         "## Performance Metrics\n",
         "| Metric | Mean ± Std |",
         "|--------|------------|",
@@ -724,6 +731,16 @@ def analyze_trajectory(output_dir: str, with_eval: bool = False) -> None:
 
         # Build trajectory entry
         output = eval_entry.get("output", {})
+
+        # Compute Score using compute_scores
+        answer = output.get("answer", "")
+        golden_answers = eval_entry.get("golden_answers", [])
+        score = 0.0
+        if answer and golden_answers:
+            # Use the first golden answer for score computation
+            ground_truth = golden_answers[0] if isinstance(golden_answers, list) else golden_answers
+            score = compute_scores(answer, ground_truth)
+
         trajectory_entry = {
             "messages": messages,
             "tools": tools,
@@ -738,6 +755,7 @@ def analyze_trajectory(output_dir: str, with_eval: bool = False) -> None:
             "pred": output.get("pred", ""),
             "error": output.get("error", ""),
             "metric_score": output.get("metric_score", {}),
+            "Score": score,
         }
 
         trajectory_data.append(trajectory_entry)

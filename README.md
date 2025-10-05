@@ -373,7 +373,7 @@ cd ART && pip install -e .[backend]
 pip install "openai-agents==0.3.3" flashinfer-python
 
 # 使用的 GSPO
-python art_rollout.py train "models/Qwen3-4B-Instruct-2507" "qwen3-4b-rlvr-110" --max_seq_length 8192 --max_tokens 4096
+python art_rollout.py train "models/Qwen3-4B-Instruct-2507" "qwen3-4b-rlvr-111" --max_seq_length 8192 --max_tokens 4096 --gpu_memory_utilization 0.6
 # 配置8192 限制就会限制总的轮次，如果输入超长就会400错误，奖励为0
 # max_seq_length - max_tokens 为 prompt_length，超出后 vllm 会报错
 
@@ -423,8 +423,120 @@ train gather step 94:  94%|█████████████████�
 
 问题4：Prompt 经常超限导致模型请求失败，此时奖励为0，和格式正确无法区分。所以增加格式奖励为0.5，正确性奖励为2。
 
-只有正确性奖励（0-1）时的 reward 曲线，可以见到收敛缓慢。
+**只有正确性奖励（0-1，后面正确性奖励都改成了0-2）时的 reward 曲线，可以见到收敛缓慢。**
+
+`python art_rollout.py train "models/Qwen3-4B-Instruct-2507" "qwen3-4b-rlvr-103" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.6 --reward_type correct`
 ![](./103.png)
 
-格式奖励（0.5） + 正确性奖励（0-2）时的 reward 曲线
+**格式奖励（0.5） + 正确性奖励（0-2）时的 reward 曲线，效果达到峰值后下降。**
+`python art_rollout.py train "models/Qwen3-4B-Instruct-2507" "qwen3-4b-rlvr-111" --max_seq_length 8192 --max_tokens 4096 --gpu_memory_utilization 0.6 --reward_type format_and_correct`
+
 ![](./111.png)
+
+**大group推理后训练（相当于10*8 = 80 rollouts/step）。**
+
+```bash
+python art_rollout.py train "models/Qwen3-4B-Instruct-2507" "qwen3-4b-rlvr-bg-01" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.6 --groups_per_step 10 --gradient_accumulation_steps 4 --reward_type correct
+## 模型训练时卡住了，修改 gradient_accumulation_steps 为 2 也会报错。感觉是Bug。
+
+python art_rollout.py train "models/Qwen3-4B-Instruct-2507" "qwen3-4b-rlvr-bg-02" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.6 --groups_per_step 10 --gradient_accumulation_steps 1 --reward_type correct
+```
+
+大的batch会减少训练过程中切换推理和训练的损耗，训练速度更快，同时缓解了局部最优解。但是光增加采样batch，训练batch不变，其实是off-policy的，所以需要用TIS、GSPO这种缓解off-policy的算法。
+
+![](bg02.png)
+
+可以看到很快就到了 65% 左右的正确率。
+
+
+**SFT + RL**
+
+```bash
+python art_rollout.py train "output/lora/v1-20251003-202557/checkpoint-96" "qwen3-4b-rlvr-sft-01" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.4 --reward_type correct --groups_per_step 10 --gradient_accumulation_steps 2
+
+# 虽然文档说可以加载 lora 为base_model（https://art.openpipe.ai/getting-started/faq#can-i-start-rl-from-an-existing-sft-lora-adapter） 但是实际报错：[rank0]: TypeError: Unsloth: Your model already has LoRA adapters. Your new parameters are different.
+```
+
+```bash
+# Merge 模型
+conda activate deepsearch-rl
+swift export \
+    --adapters output/lora/v1-20251003-202557/checkpoint-96 \
+    --merge_lora true
+mv output/lora/v1-20251003-202557/checkpoint-96-merged models/qwen3-4b-sft-ckpt96
+
+conda activate openpipe-art
+# Run RL
+python art_rollout.py train "models/qwen3-4b-sft-ckpt96" "qwen3-4b-rlvr-sft-02" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.6 --reward_type correct --groups_per_step 10 --gradient_accumulation_steps 1
+```
+
+SFT 后 RL，起步的 Reward 就很高。
+
+![](./sft-rl.png)
+
+最终心得：
+1. 使用简单的正确性评分，ART 可以用RLVR，不是非要用 LLM Score
+2. 使用大 Group 推理来加速训练（避免推理和训练的来回切换带来的损耗），但是这样就退化为 off-policy，需要用TIS、GSPO等缓解off-policy的算法。（其实相当于 TRL 里的 steps_per_generation 参数，GSPO 默认 4，我们这里设置为10）
+
+#### RL 后的模型推理
+
+OpenPipe-ART 默认是 4bit QLora，但是base model不用 4bit 也可以。
+
+```bash
+conda activate deepsearch-rl
+pip install bitsandbytes
+cp -r .art/deepsearch-agent-art/models/qwen3-4b-rlvr-sft-02/checkpoints/0118 ./models/qwen3-4b-rlvr-sft-02-ckpt118
+
+vllm serve models/Qwen3-4B-Instruct-2507 --enforce-eager \
+    --quantization bitsandbytes \
+    --max-model-len 32768 --enable-auto-tool-choice --tool-call-parser hermes \
+    --enable-lora --max-lora-rank 64 \
+    --lora-modules qwen3-4b-rlvr-sft-02-ckpt118-4bit=models/qwen3-4b-rlvr-sft-02-ckpt118
+
+model=qwen3-4b-rlvr-sft-02-ckpt118-4bit
+model_name=`echo $model | tr '/:' '-'`
+prompt_name="MultiHop-RAG-NoThink"
+python deepsearch_agent.py run --base_url http://localhost:8000/v1 --api_key EMPTY --prompt-name "$prompt_name" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/"$prompt_name"/"$model_name"
+python analyze_trajectory.py --output_dir output/"$prompt_name"/"$model_name" --with_eval
+
+ {'em': 0.67, 'f1': 0.6725, 'acc': 0.675, 'precision': 0.675, 'recall': 0.6716666666666667}
+```
+
+| 模型 | Prompt | topK | chunk_size(tokens) | 结果（F1） |
+| --- | --- | --- | --- | --- | 
+| Qwen3-4B-Instruct-2507 | MultiHop-RAG-NoThink | 3 | 200 | 0.521 |
+| 4b-sft-cpkt96 | MultiHop-RAG-NoThink |3 | 200 | 0.751 |
+| qwen3-4b-rlvr-sft-02-ckpt118-4bit | MultiHop-RAG-NoThink | 3 | 0.673 |
+
+可以发现 SFT + RL 后的模型还没有赶上 SFT 模型的效果。这是在预期内的，小模型的 RL 效果一般就弱于蒸馏。
+
+查看 analyze_trajectory.py 输出的结果，模型学会了5次搜索+6轮（超过则超长失败）
+
+```bash
+                         Conversation Dynamics
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┓
+┃ Metric                    ┃         All ┃     Success ┃     Failure ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━┩
+│ Avg Rounds                │ 5.72 ± 0.67 │ 5.78 ± 0.59 │ 5.59 ± 0.80 │
+│ Avg Tool Calls            │ 4.72 ± 0.67 │ 4.79 ± 0.59 │ 4.59 ± 0.80 │
+└───────────────────────────┴─────────────┴─────────────┴─────────────┘
+
+                 Round Distribution
+┏━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━┓
+┃  Rounds  ┃         All ┃     Success ┃    Failure ┃
+┡━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━┩
+│    3     │    2 (1.0%) │    1 (0.7%) │   1 (1.5%) │
+│    4     │   19 (9.5%) │    9 (6.7%) │ 10 (15.2%) │
+│    5     │   12 (6.0%) │    8 (6.0%) │   4 (6.1%) │
+│    6     │ 167 (83.5%) │ 116 (86.6%) │ 51 (77.3%) │
+└──────────┴─────────────┴─────────────┴────────────┘
+                 Tool Calls Distribution
+┏━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━┓
+┃  Tool Calls  ┃         All ┃     Success ┃    Failure ┃
+┡━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━┩
+│      2       │    2 (1.0%) │    1 (0.7%) │   1 (1.5%) │
+│      3       │   19 (9.5%) │    9 (6.7%) │ 10 (15.2%) │
+│      4       │   11 (5.5%) │    7 (5.2%) │   4 (6.1%) │
+│      5       │ 168 (84.0%) │ 117 (87.3%) │ 51 (77.3%) │
+└──────────────┴─────────────┴─────────────┴────────────┘
+```

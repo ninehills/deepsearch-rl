@@ -117,7 +117,7 @@ class Scenario(BaseModel):
     split: Literal["train", "val"]
 
 @weave.op
-async def rollout(model: art.Model, scenario: Scenario, max_tokens: int = 4096) -> art.Trajectory:
+async def rollout(model: art.Model, scenario: Scenario, max_tokens: int = 4096, reward_type: str = "format_and_correct") -> art.Trajectory:
     traj = art.Trajectory(
         reward=0.0,
         messages_and_choices=[],
@@ -164,7 +164,12 @@ async def rollout(model: art.Model, scenario: Scenario, max_tokens: int = 4096) 
         format_reward = 0.0
     # 正确性奖励 0-2
     correct_reward = compute_scores(ret["answer"], scenario.golden_answers[0]) * 2
-    traj.reward = correct_reward + format_reward
+    if reward_type == "format_and_correct":
+        traj.reward = correct_reward + format_reward
+    elif reward_type == "correct":
+        traj.reward = correct_reward
+    else:
+        raise ValueError(f"Unknown reward type: {reward_type}")
 
     return traj
 
@@ -191,6 +196,9 @@ async def load_model(args) -> art.TrainableModel:
         ),
         engine_args=engine_args,
         _decouple_vllm_and_unsloth=args.decouple_vllm_and_unsloth,
+        trainer_args=art.dev.TrainerArgs(
+            gradient_accumulation_steps=args.gradient_accumulation_steps,
+        ),
     )
 
     # Initialize the server
@@ -237,9 +245,11 @@ async def rollout_test(args):
 
 async def train(args):
     training_config = {
-        "groups_per_step": 2,
+        "groups_per_step": args.groups_per_step,
         "num_epochs": 1,
-        "rollouts_per_group": 8,
+        # 这个框架不能调整 per_device_train_batch_size=2，那么最好的 gradient_accumulation_steps 是 rollouts_per_group / 2 的倍数
+        # 但是因为默认使用了packing，也没啥意义了。
+        "rollouts_per_group": 8, 
         "learning_rate": 3e-5,
     }
     model = await load_model(args)
@@ -266,7 +276,7 @@ async def train(args):
         groups = await art.gather_trajectory_groups(
             (
                 art.TrajectoryGroup(
-                    rollout(model, scenario, args.max_tokens)
+                    rollout(model, scenario, args.max_tokens, args.reward_type)
                     for _ in range(training_config["rollouts_per_group"])
                 )
                 for scenario in batch.items
@@ -285,19 +295,27 @@ async def train(args):
             scored_groups.append(judged_group)
 
         print("starting train")
+        gspo_config = art.dev.TrainConfig(
+            # GSPO
+            importance_sampling_level="sequence",
+            epsilon=3e-4,
+            epsilon_high=4e-4,
+            # TIS
+            truncated_importance_sampling=2.0,
+            # 减少 Logprob 计算所需的内存
+            logprob_calculation_chunk_size=8,
+        )
+        grpo_config = art.dev.TrainConfig(
+            # TIS
+            truncated_importance_sampling=2.0,
+            # 减少 Logprob 计算所需的内存
+            logprob_calculation_chunk_size=8,
+        )
         await model.train(
             scored_groups,
             config=art.TrainConfig(learning_rate=training_config["learning_rate"]),
-            _config=art.dev.TrainConfig(
-                # GSPO
-                importance_sampling_level="sequence",
-                epsilon=3e-4,
-                epsilon_high=4e-4,
-                # TIS
-                truncated_importance_sampling=2.0,
-                # 减少 Logprob 计算所需的内存
-                logprob_calculation_chunk_size=8,
-            )
+            _config=gspo_config if args.method == "gspo" else grpo_config,
+            verbose=True,
         )
 
 
@@ -315,6 +333,10 @@ if __name__ == "__main__":
     parser.add_argument("--resume_ckpt", type=str, default=None, help="resume checkpoint, <model_name>:<step> (default: None)")
     parser.add_argument("--disable_sleep_mode", action="store_true", help="Disable sleep mode (default: enabled)")
     parser.add_argument("--decouple_vllm_and_unsloth", action="store_true", help="Decouple vLLM and Unsloth (default: disabled)")
+    parser.add_argument("--groups_per_step", type=int, default=2, help="Groups per step (default: 2)")
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Gradient accumulation steps (default: 1)")
+    parser.add_argument("--reward_type", choices=["correct", "format_and_correct"], default="format_and_correct", help="Reward type (default: format_and_correct)")
+    parser.add_argument("--method", choices=["grpo", "gspo"], default="gspo", help="Training method (default: gspo)")
 
     args = parser.parse_args()
 
