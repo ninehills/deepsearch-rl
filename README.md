@@ -480,63 +480,42 @@ SFT 后 RL，起步的 Reward 就很高。
 
 #### RL 后的模型推理
 
-OpenPipe-ART 默认是 4bit QLora，但是base model不用 4bit 也可以。
+OpenPipe-ART 默认是 4bit QLora，所以最好是用量化加载。
+
+> 同时测试 16bit 模型 + QLora adapter，效果有所下降（对大模型来说还好，对4B小模型影响较大）
 
 ```bash
 conda activate deepsearch-rl
 pip install bitsandbytes
-cp -r .art/deepsearch-agent-art/models/qwen3-4b-rlvr-sft-02/checkpoints/0118 ./models/qwen3-4b-rlvr-sft-02-ckpt118
+
+CKPT=0020
+LORA_NAME=qwen3-4b-rlvr-sft-02-ckpt${CKPT}-4bit
 
 vllm serve models/Qwen3-4B-Instruct-2507 --enforce-eager \
     --quantization bitsandbytes \
     --max-model-len 32768 --enable-auto-tool-choice --tool-call-parser hermes \
     --enable-lora --max-lora-rank 64 \
-    --lora-modules qwen3-4b-rlvr-sft-02-ckpt118-4bit=models/qwen3-4b-rlvr-sft-02-ckpt118
+    --lora-modules ${LORA_NAME}=.art/deepsearch-agent-art/models/qwen3-4b-rlvr-sft-02/checkpoints/${CKPT}
 
-model=qwen3-4b-rlvr-sft-02-ckpt118-4bit
+model=${LORA_NAME}
 model_name=`echo $model | tr '/:' '-'`
 prompt_name="MultiHop-RAG-NoThink"
 python deepsearch_agent.py run --base_url http://localhost:8000/v1 --api_key EMPTY --prompt-name "$prompt_name" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/"$prompt_name"/"$model_name"
 python analyze_trajectory.py --output_dir output/"$prompt_name"/"$model_name" --with_eval
 
- {'em': 0.67, 'f1': 0.6725, 'acc': 0.675, 'precision': 0.675, 'recall': 0.6716666666666667}
 ```
 
 | 模型 | Prompt | topK | chunk_size(tokens) | 结果（F1） |
 | --- | --- | --- | --- | --- | 
 | Qwen3-4B-Instruct-2507 | MultiHop-RAG-NoThink | 3 | 200 | 0.521 |
 | 4b-sft-cpkt96 | MultiHop-RAG-NoThink |3 | 200 | 0.751 |
-| qwen3-4b-rlvr-sft-02-ckpt118-4bit | MultiHop-RAG-NoThink | 3 | 0.673 |
+| qwen3-4b-rlvr-sft-02-ckpt0118-4bit | MultiHop-RAG-NoThink | 3 | 200 | 0.673 |
+| qwen3-4b-rlvr-sft-02-ckpt0099-4bit | MultiHop-RAG-NoThink | 3 | 200 | 0.723 |
+| qwen3-4b-rlvr-sft-02-ckpt0080-4bit | MultiHop-RAG-NoThink | 3 | 200 | 0.633 |
+| qwen3-4b-rlvr-sft-02-ckpt0040-4bit | MultiHop-RAG-NoThink | 3 | 200 | 0.603 |
+| qwen3-4b-rlvr-sft-02-ckpt0020-4bit | MultiHop-RAG-NoThink | 3 | 200 | 0.681 |
 
-可以发现 SFT + RL 后的模型还没有赶上 SFT 模型的效果。这是在预期内的，小模型的 RL 效果一般就弱于蒸馏。
+可以发现 SFT + RL 后的模型还没有赶上 SFT 模型的效果。这是在预期内的，小模型的 RL 效果一般就弱于蒸馏。，
 
-查看 analyze_trajectory.py 输出的结果，模型学会了5次搜索+6轮（超过则超长失败）
+查看 analyze_trajectory.py 输出的结果，模型学会了5次搜索+6轮（超过则超长失败）但是缺乏 thinking 效果，
 
-```bash
-                         Conversation Dynamics
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┓
-┃ Metric                    ┃         All ┃     Success ┃     Failure ┃
-┡━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━┩
-│ Avg Rounds                │ 5.72 ± 0.67 │ 5.78 ± 0.59 │ 5.59 ± 0.80 │
-│ Avg Tool Calls            │ 4.72 ± 0.67 │ 4.79 ± 0.59 │ 4.59 ± 0.80 │
-└───────────────────────────┴─────────────┴─────────────┴─────────────┘
-
-                 Round Distribution
-┏━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━┓
-┃  Rounds  ┃         All ┃     Success ┃    Failure ┃
-┡━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━┩
-│    3     │    2 (1.0%) │    1 (0.7%) │   1 (1.5%) │
-│    4     │   19 (9.5%) │    9 (6.7%) │ 10 (15.2%) │
-│    5     │   12 (6.0%) │    8 (6.0%) │   4 (6.1%) │
-│    6     │ 167 (83.5%) │ 116 (86.6%) │ 51 (77.3%) │
-└──────────┴─────────────┴─────────────┴────────────┘
-                 Tool Calls Distribution
-┏━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━┓
-┃  Tool Calls  ┃         All ┃     Success ┃    Failure ┃
-┡━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━┩
-│      2       │    2 (1.0%) │    1 (0.7%) │   1 (1.5%) │
-│      3       │   19 (9.5%) │    9 (6.7%) │ 10 (15.2%) │
-│      4       │   11 (5.5%) │    7 (5.2%) │   4 (6.1%) │
-│      5       │ 168 (84.0%) │ 117 (87.3%) │ 51 (77.3%) │
-└──────────────┴─────────────┴─────────────┴────────────┘
-```
