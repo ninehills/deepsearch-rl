@@ -25,9 +25,9 @@ pip install -r requirements.txt
 
 ## 1. Download corpus dataset and setup MCP server
 
-### 1.1 【待办】wiki-18 数据集
+### 1.1 【完成】wiki-18 数据集
 
-参见 data/wiki_retriever_mcp/README.md
+参见 data/wiki-18/README.md
 
 ### 1.2 【待办】GraphRAG-Bench 数据集
 
@@ -563,20 +563,72 @@ Evaluation results: {'em': 0.855, 'f1': 0.8625, 'acc': 0.86, 'precision': 0.865,
 为了鼓励思考，增加强制的格式化奖励 think_format，目前有四种奖励：
 
 1. correct（0-2）: 最终的答案得分（F1分数） x 2
-2. think_format(0-0.5): 所有轮次中是否都有 <think></think>，而且思考都有内容
-3. answer_format(0-0.5): 最后一步是否有 <answer></answer>，而且答案不为空（注意工具调用失败、Prompt 超长都会导致 answer_format 为 0）
-4. soft_overlong（-0.5~0）：进行长度惩罚，控制一个长度范围，以奖励用较少的 token 完成任务。
+2. think_format(0-0.5): 所有轮次中是否都有 <think></think>，而且思考都有内容，多轮间平均，think为空是0.2，不为空为0.5
+3. 【不开启】answer_format(0-0.5): 最后一步是否有 <answer></answer>，而且答案不为空（注意工具调用失败、Prompt 超长都会导致 answer_format 为 0）
+4. 【不开启】soft_overlong（-0.5~0）：进行长度惩罚，控制一个长度范围，以奖励用较少的 token 完成任务。
 
-使用参数 --rewards correct,think_format,answer_format,soft_overlong 控制开启
+使用参数 --rewards  控制开启，使用 Qwen3-4B-Thinking-2507 作为思考模型的base model
 
+```bash
+python art_rollout.py train "models/Qwen3-4B-Thinking-2507" "qwen3-4b-thinking-rlvr-01" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.6 --groups_per_step 10 --gradient_accumulation_steps 1 --reward_type correct,think_format
+
+```
 ## 4. OOD 评估
 
 我们训练的目标是希望不仅仅在单个数据集上有好的效果，而是希望学会对 MCP 工具的使用，在相关的下游任务上都有较好的效果，我们选择 musique 数据集，使用相同的提示词和工具，验证下模型的工具使用能力能否扩展到其他任务上。
 
+1. 首先去 data/wiki18 目录，根据 README.md 启动服务（注意我们为了规避这个数据集内存占用问题，转换为量化IVFPQ索引，recall@5精度下降为原来的 81.2%，会导致实际效果变差）
+2. 下载 Musique/hotpotqa/2wikimultihopqa 数据集 dev 前200条数据
 
-| 模型 | Prompt | topK | MultiHopRAG（F1）|  Musique（F1）| 
-| --- | --- | --- | --- | --- |
-| Kimi/kimi-k2-turbo-preview | MultiHop-RAG-NoThink | 3 | 0.616 | 0. |
-| Qwen3-4B-Instruct-2507 | MultiHop-RAG-NoThink | 3 | 0.521 | 0. |
-| 4b-sft-cpkt96 | MultiHop-RAG-NoThink |3 | 0.751 | 0. |
-| qwen3-4b-rlvr-sft-02-ckpt0099-merged | MultiHop-RAG-NoThink | 3 | 0.863 | 0.000 |
+```bash
+python -c "import datasets;\
+datasets.load_dataset('RUC-NLPIR/FlashRAG_datasets', 'musique', split='dev').select(range(200)).to_json('data/musique/musique_dev_200.jsonl', lines=True, force_ascii=False);\
+datasets.load_dataset('RUC-NLPIR/FlashRAG_datasets', 'hotpotqa', split='dev').select(range(200)).to_json('data/hotpotqa/hotpotqa_dev_200.jsonl', lines=True, force_ascii=False);
+datasets.load_dataset('RUC-NLPIR/FlashRAG_datasets', '2wikimultihopqa', split='dev').select(range(200)).to_json('data/2wikimultihopqa/2wikimultihopqa_dev_200.jsonl', lines=True, force_ascii=False);\
+"
+```
+
+
+| 模型 | Prompt | topK | MultiHopRAG（F1）|  MusiqueDev200（F1）| 2wikiDev200（F1）|
+| --- | --- | --- | --- | --- | --- |
+| Kimi/kimi-k2-turbo-preview | MultiHop-RAG-NoThink | 3 | 0.616 | 0.428 | 0.473 |
+| Qwen3-4B-Instruct-2507 | MultiHop-RAG-NoThink | 3 | 0.521 | 0.139 | 0.222 |
+| 4b-sft-cpkt96 | MultiHop-RAG-NoThink |3 | 0.751 | 0.248 | 0.394 |
+| qwen3-4b-rlvr-sft-02-ckpt0099-merged | MultiHop-RAG-NoThink | 3 | 0.863 | 0.235 | 0.343 |
+| qwen3-4b-rlvr-bg-02-ckpt0103-merged | MultiHop-RAG-NoThink | 3 | 0.831 | 0.237 | 0.389 |
+
+不恰当的和公开论文比较（索引没有对齐，而且没有做musique/2wikimultihopqa全量评测）：
+
+![](./musique.png)
+
+思考：
+1. vllm 开启--enforce-eager 在这个case下的性能会相比于不开启要好一些，可能是训练的时候就是开启 enforce-eager（没有用 CudaGraph），所以对齐后性能较好。。
+2. OOD 的效果会变差，但是不管是 SFT 还是 RL，都有一定的泛化能力。SFT 意外的泛化效果还不错。
+3. 测试 prefix-caching 对效果的影响，发现qwen3-4b-rlvr-sft-02-ckpt0099-merged 开启前 2wikiDev200（F1）为0.335，开启后（默认）为0.343。推理参数对效果有一定的影响。
+
+```bash
+# 快速执行评估
+bash ./eval.sh Kimi/kimi-k2-turbo-preview 2wikimultihopqa
+```
+
+
+测试下模型的通用能力有没有退化（选择ifeval 指令遵循，是较容易退化的能力）：
+```bash
+pip install evalscope
+evalscope eval \
+ --model models/Qwen3-4B-Instruct-2507 \
+ --api-url http://127.0.0.1:8000/v1 \
+ --api-key EMPTY \
+ --eval-type openai_api \
+ --datasets ifeval \
+ --eval-batch-size 30
+```
+
+| 模型 | IFEval(prompt-strict) |
+| --- | --- |
+| Qwen3-4B-Instruct-2507 | 0.8336 |
+| 4b-sft-cpkt96 | 0.8281 |
+| qwen3-4b-rlvr-sft-02-ckpt0099-merged | 0.8189 |
+| qwen3-4b-rlvr-bg-02-ckpt0103-merged | 0.8373 |
+
+Lora 的好处就是灾难性遗忘较低，但是纯 RL 的好处是基本没有遗忘。

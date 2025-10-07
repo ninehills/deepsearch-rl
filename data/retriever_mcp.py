@@ -27,6 +27,8 @@ def parse_args():
                         help="Number of top results to return")
     parser.add_argument("--retrieval_method", type=str, default="e5",
                         help="Retrieval method name")
+    parser.add_argument("--faiss_args", type=str, default="",
+                        help="FAISS index arguments (e.g. 'nprobe=16,efSearch=128')")
     parser.add_argument("--use_multi_retriever", action="store_true",
                         help="Use multi-retriever with both vector and BM25")
     parser.add_argument("--merge_method", type=str, default="rrf",
@@ -173,6 +175,14 @@ elif args.vector_index_path:
     logging.info("Initializing dense retriever...")
     config = build_retriever_config(args)
     retriever = DenseRetriever(config)
+    if args.faiss_args:
+        logging.info(f"Setting FAISS index arguments: {args.faiss_args}")
+        for kv in args.faiss_args.split(','):
+            k, v = kv.strip().split('=')
+            if k != '':
+                v = int(v) if v.isdigit() else v
+                logging.info(f">>> Setting FAISS index argument {k} = {v}")
+                setattr(retriever.index, k, v)
     logging.info("Dense retriever initialized successfully.")
 elif args.bm25_index_path:
     logging.info("Initializing BM25 retriever...")

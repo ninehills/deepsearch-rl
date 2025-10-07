@@ -2,13 +2,11 @@
 
 Search-R1 项目提供了 wiki-18 数据集 corpus 文件和 intfloat/e5-base-v2 模型的 index 文件，我们需要下载后启动为检索用的 MCP Server。
 
-```bash
-cd data/wiki_retriever_mcp/
-save_path="_data"
-# In China: export HF_ENDPOINT=https://hf-mirror.com
+也可以下载 FlashRAG 提供的物料： https://www.modelscope.cn/datasets/hhjinjiajie/FlashRAG_Dataset/files 中的 retrieval_corpus 目录。 
 
-## 下载检索模型
-huggingface-cli download intfloat/e5-base-v2 --local-dir $save_path/e5-base-v2 --local-dir-use-symlinks False
+```bash
+cd data/wiki18/
+save_path="_data"
 
 ## 下载数据集
 python download.py --save_path $save_path
@@ -16,12 +14,7 @@ cat $save_path/part_* > $save_path/e5_Flat.index
 gzip -d $save_path/wiki-18.jsonl.gz
 rm $save_path/part_*
 
-## 启动 MCP Server
-# Flat 版本需要 60G 内存占用，单次检索 3s 左右。
-bash ./launch_server.sh
-
-## 测试 MCP Server
-npx @modelcontextprotocol/inspector mcp_config.json
+# 默认是 e5_Flat.index 索引，Flat 版本需要 60G 内存占用，单次检索 3s 左右。
 ```
 
 问题：
@@ -29,9 +22,10 @@ npx @modelcontextprotocol/inspector mcp_config.json
 2. 需要60G 内存
 
 解决办法：
-1. 使用faiss-gpu + 60+GB 显存
-2. 将FLAT索引修改为 HNSW索引，内存需求 60G+，但是检索速度更快。
-3. 文档使用 Disk Dict 或 Disk 偏移量访问
+1. 【放弃】使用faiss-gpu + 60+GB 显存
+2. 【放弃】将FLAT索引修改为 HNSW索引，内存需求 60G+，但是检索速度更快。
+3. FlashRAG 使用 datasets 库加载corpus，转成 Arrow 格式，使用memory mapping避免内存占用。
+4. 【选中】使用IVF量化索引。
 
 ## 将索引转换为 量化索引
 
@@ -96,4 +90,22 @@ efSearch | Recall@5  | Search Time (ms) | QPS      | Speedup vs Flat
 2048     | 0.8080   | 353.80             | 282.65   |     257.02     x
 4096     | 0.8160   | 924.90             | 108.12   |      98.32     x
 8192     | 0.8180   | 3076.53            | 32.50    |      29.56     x
+```
+
+## 启动 MCP Server
+
+```bash
+# 启动MCP server
+python ../retriever_mcp.py \
+    --vector_index_path _data/e5_ivfpq.faiss \
+    --model_path ../../models/e5-base-v2 \
+    --instruction "query: " \
+    --corpus_path _data/wiki-18.jsonl \
+    --faiss_args "nprobe=16" \
+    --device cpu \
+    --top_k 3
+
+
+# Debug
+npx @modelcontextprotocol/inspector
 ```

@@ -260,7 +260,7 @@ def main():
     run_parser.add_argument('--api_key', help='API key (if not set, read from .env)')
     run_parser.add_argument('--do_eval', action='store_true', help='Run evaluation')
     run_parser.add_argument('--output_dir', default='output/', help='Output directory')
-    run_parser.add_argument('--max_concurrent', type=int, default=10, help='Max concurrent requests')
+    run_parser.add_argument('--max_concurrent', type=int, default=30, help='Max concurrent requests')
 
     # Eval command
     eval_parser = subparsers.add_parser('eval', help='Run evaluation only on existing results')

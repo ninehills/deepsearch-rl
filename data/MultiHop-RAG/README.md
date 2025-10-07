@@ -9,12 +9,12 @@ mv MultiHop-RAG _data/
 
 # 转换为 FlashRAG 格式
 python convert_dataset.py
-python ../corpus_to_chunk.py --input_path _data/corpus.jsonl --output_path _data/chunks.jsonl --chunk_by recursive --chunk_size 500 --tokenizer_name_or_path ../wiki_retriever_mcp/_data/e5-base-v2/
+python ../corpus_to_chunk.py --input_path _data/corpus.jsonl --output_path _data/chunks.jsonl --chunk_by recursive --chunk_size 500 --tokenizer_name_or_path ../../models/e5-base-v2 
 
 # 构建 embedding index
 python -m flashrag.retriever.index_builder \
   --retrieval_method e5 \
-  --model_path ../wiki_retriever_mcp/_data/e5-base-v2/ \
+  --model_path ../../models/e5-base-v2  \
   --corpus_path _data/chunks.jsonl \
   --save_dir _data/ \
   --use_fp16 \
@@ -35,7 +35,7 @@ python -m flashrag.retriever.index_builder \
 python ../retriever_mcp.py \
     --vector_index_path _data/e5_Flat.index \
     --bm25_index_path _data/bm25/ \
-    --model_path ../wiki_retriever_mcp/_data/e5-base-v2 \
+    --model_path ../../models/e5-base-v2 \
     --instruction "query: " \
     --corpus_path _data/chunks.jsonl \
     --use_multi_retriever \
