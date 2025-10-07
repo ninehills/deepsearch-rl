@@ -364,6 +364,8 @@ bash -x agent-lightning-train.sh
 
 ### 4.2 OpenPipe-ART
 
+#### 4.2.1 Non-Thinking Model RL
+
 没有使用LLM的评分，而是使用绝对评分。
 
 ```bash
@@ -423,6 +425,12 @@ train gather step 94:  94%|█████████████████�
 
 问题4：Prompt 经常超限导致模型请求失败，此时奖励为0，和格式正确无法区分。所以增加格式奖励为0.5，正确性奖励为2。
 
+问题5： 偶发出现训练变得特别慢，怀疑是显存不足offload导致的
+```bash
+Packed 56 trajectories into 26 sequences of length 8192
+train:   4%|███▎  | 1/26 [08:49<3:40:37, 529.48s/it, loss=-0.538, grad_norm=0.385, policy_loss=-0.538, entropy=0.285]
+```
+
 **只有正确性奖励（0-1，后面正确性奖励都改成了0-2）时的 reward 曲线，可以见到收敛缓慢。**
 
 `python art_rollout.py train "models/Qwen3-4B-Instruct-2507" "qwen3-4b-rlvr-103" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.6 --reward_type correct`
@@ -474,28 +482,28 @@ SFT 后 RL，起步的 Reward 就很高。
 
 ![](./sft-rl.png)
 
+有意思的是纯RL 到一定 steps，奖励和SFT+RL  同步（相同的数据
+
+![](rl_sft.png)
+
 最终心得：
 1. 使用简单的正确性评分，ART 可以用RLVR，不是非要用 LLM Score
 2. 使用大 Group 推理来加速训练（避免推理和训练的来回切换带来的损耗），但是这样就退化为 off-policy，需要用TIS、GSPO等缓解off-policy的算法。（其实相当于 TRL 里的 steps_per_generation 参数，GSPO 默认 4，我们这里设置为10）
 
-#### RL 后的模型推理
+##### RL 后的模型推理
 
-OpenPipe-ART 默认是 4bit QLora，所以最好是用量化加载。
-
-> 同时测试 16bit 模型 + QLora adapter，效果有所下降（对大模型来说还好，对4B小模型影响较大）
+OpenPipe-ART 默认使用 Unsloth QLora训练，需要用对应的merge方法（不能用vllm 的 bitandbytes 量化加载，主要是量化的配置不同，unlosth默认是nf4 量化）。
 
 ```bash
+conda activate openpipe-art
+CKPT=0099
+LORA_NAME=qwen3-4b-rlvr-sft-02-ckpt${CKPT}-merged
+
+python unsloth_merge_model.py .art/deepsearch-agent-art/models/qwen3-4b-rlvr-sft-02/checkpoints/${CKPT} models/${LORA_NAME}
+
 conda activate deepsearch-rl
-pip install bitsandbytes
-
-CKPT=0020
-LORA_NAME=qwen3-4b-rlvr-sft-02-ckpt${CKPT}-4bit
-
-vllm serve models/Qwen3-4B-Instruct-2507 --enforce-eager \
-    --quantization bitsandbytes \
-    --max-model-len 32768 --enable-auto-tool-choice --tool-call-parser hermes \
-    --enable-lora --max-lora-rank 64 \
-    --lora-modules ${LORA_NAME}=.art/deepsearch-agent-art/models/qwen3-4b-rlvr-sft-02/checkpoints/${CKPT}
+vllm serve models/${LORA_NAME} --served-model-name ${LORA_NAME} --enforce-eager \
+    --max-model-len 32768 --enable-auto-tool-choice --tool-call-parser hermes 
 
 model=${LORA_NAME}
 model_name=`echo $model | tr '/:' '-'`
@@ -503,19 +511,72 @@ prompt_name="MultiHop-RAG-NoThink"
 python deepsearch_agent.py run --base_url http://localhost:8000/v1 --api_key EMPTY --prompt-name "$prompt_name" --dataset ./data/MultiHop-RAG/_data/val.jsonl --do_eval --model "$model" --output_dir output/"$prompt_name"/"$model_name"
 python analyze_trajectory.py --output_dir output/"$prompt_name"/"$model_name" --with_eval
 
+Evaluation results: {'em': 0.855, 'f1': 0.8625, 'acc': 0.86, 'precision': 0.865, 'recall': 0.8616666666666667} 
+                         Conversation Dynamics
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┓
+┃ Metric                    ┃         All ┃     Success ┃     Failure ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━┩
+│ Avg Rounds                │ 4.88 ± 0.52 │ 4.85 ± 0.54 │ 5.04 ± 0.33 │
+│ Avg Tool Calls            │ 3.88 ± 0.52 │ 3.85 ± 0.54 │ 4.04 ± 0.33 │
+└───────────────────────────┴─────────────┴─────────────┴─────────────┘
+## Round Distribution
+
+| Rounds | All | Success | Failure |
+|--------|-----|---------|---------|
+| 2 | 1 (0.5%) | 1 (0.6%) | 0 (0.0%) |
+| 3 | 9 (4.5%) | 9 (5.2%) | 0 (0.0%) |
+| 4 | 7 (3.5%) | 6 (3.5%) | 1 (3.6%) |
+| 5 | 179 (89.5%) | 154 (89.5%) | 25 (89.3%) |
+| 6 | 4 (2.0%) | 2 (1.2%) | 2 (7.1%) |
+
+## Tool Calls Distribution
+
+| Tool Calls | All | Success | Failure |
+|------------|-----|---------|---------|
+| 1 | 1 (0.5%) | 1 (0.6%) | 0 (0.0%) |
+| 2 | 9 (4.5%) | 9 (5.2%) | 0 (0.0%) |
+| 3 | 7 (3.5%) | 6 (3.5%) | 1 (3.6%) |
+| 4 | 179 (89.5%) | 154 (89.5%) | 25 (89.3%) |
+| 5 | 4 (2.0%) | 2 (1.2%) | 2 (7.1%) |
 ```
+
+比较下不同模型的效果
 
 | 模型 | Prompt | topK | chunk_size(tokens) | 结果（F1） |
 | --- | --- | --- | --- | --- | 
+| Kimi/kimi-k2-turbo-preview | MultiHop-RAG-NoThink | 3 | 200 | 0.616 |
 | Qwen3-4B-Instruct-2507 | MultiHop-RAG-NoThink | 3 | 200 | 0.521 |
 | 4b-sft-cpkt96 | MultiHop-RAG-NoThink |3 | 200 | 0.751 |
-| qwen3-4b-rlvr-sft-02-ckpt0118-4bit | MultiHop-RAG-NoThink | 3 | 200 | 0.673 |
-| qwen3-4b-rlvr-sft-02-ckpt0099-4bit | MultiHop-RAG-NoThink | 3 | 200 | 0.723 |
-| qwen3-4b-rlvr-sft-02-ckpt0080-4bit | MultiHop-RAG-NoThink | 3 | 200 | 0.633 |
-| qwen3-4b-rlvr-sft-02-ckpt0040-4bit | MultiHop-RAG-NoThink | 3 | 200 | 0.603 |
-| qwen3-4b-rlvr-sft-02-ckpt0020-4bit | MultiHop-RAG-NoThink | 3 | 200 | 0.681 |
+| qwen3-4b-rlvr-sft-02-ckpt0099-merged | MultiHop-RAG-NoThink | 3 | 200 | 0.863 |
+| qwen3-4b-rlvr-bg-02-ckpt0103-merged | MultiHop-RAG-NoThink | 3 | 200 | 0.831 |
 
-可以发现 SFT + RL 后的模型还没有赶上 SFT 模型的效果。这是在预期内的，小模型的 RL 效果一般就弱于蒸馏。，
+查看 analyze_trajectory.py 输出的结果，模型学会了5次搜索+6轮（超过则超长失败）但是缺乏 thinking 效果。
 
-查看 analyze_trajectory.py 输出的结果，模型学会了5次搜索+6轮（超过则超长失败）但是缺乏 thinking 效果，
 
+
+#### 4.2.2 Thinking Model RL
+
+非思考模型很大的问题是在工具调用之前，模型并没有进行思考（虽然从 Chat Template 上是允许助手在 Function Call 之前输出思考内容，但是在模型Post-training 中很少如此训练）。
+
+我们使用非思考模型 + RL，看模型能够通过工具调用的思考，提升工具调用的效果。
+
+为了鼓励思考，增加强制的格式化奖励 think_format，目前有四种奖励：
+
+1. correct（0-2）: 最终的答案得分（F1分数） x 2
+2. think_format(0-0.5): 所有轮次中是否都有 <think></think>，而且思考都有内容
+3. answer_format(0-0.5): 最后一步是否有 <answer></answer>，而且答案不为空（注意工具调用失败、Prompt 超长都会导致 answer_format 为 0）
+4. soft_overlong（-0.5~0）：进行长度惩罚，控制一个长度范围，以奖励用较少的 token 完成任务。
+
+使用参数 --rewards correct,think_format,answer_format,soft_overlong 控制开启
+
+## 4. OOD 评估
+
+我们训练的目标是希望不仅仅在单个数据集上有好的效果，而是希望学会对 MCP 工具的使用，在相关的下游任务上都有较好的效果，我们选择 musique 数据集，使用相同的提示词和工具，验证下模型的工具使用能力能否扩展到其他任务上。
+
+
+| 模型 | Prompt | topK | MultiHopRAG（F1）|  Musique（F1）| 
+| --- | --- | --- | --- | --- |
+| Kimi/kimi-k2-turbo-preview | MultiHop-RAG-NoThink | 3 | 0.616 | 0. |
+| Qwen3-4B-Instruct-2507 | MultiHop-RAG-NoThink | 3 | 0.521 | 0. |
+| 4b-sft-cpkt96 | MultiHop-RAG-NoThink |3 | 0.751 | 0. |
+| qwen3-4b-rlvr-sft-02-ckpt0099-merged | MultiHop-RAG-NoThink | 3 | 0.863 | 0.000 |
