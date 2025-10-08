@@ -560,19 +560,13 @@ Evaluation results: {'em': 0.855, 'f1': 0.8625, 'acc': 0.86, 'precision': 0.865,
 
 我们使用非思考模型 + RL，看模型能够通过工具调用的思考，提升工具调用的效果。
 
-为了鼓励思考，增加强制的格式化奖励 think_format，目前有四种奖励：
-
-1. correct（0-2）: 最终的答案得分（F1分数） x 2
-2. think_format(0-0.5): 所有轮次中是否都有 <think></think>，而且思考都有内容，多轮间平均，think为空是0.2，不为空为0.5
-3. 【不开启】answer_format(0-0.5): 最后一步是否有 <answer></answer>，而且答案不为空（注意工具调用失败、Prompt 超长都会导致 answer_format 为 0）
-4. 【不开启】soft_overlong（-0.5~0）：进行长度惩罚，控制一个长度范围，以奖励用较少的 token 完成任务。
-
-使用参数 --rewards  控制开启，使用 Qwen3-4B-Thinking-2507 作为思考模型的base model
 
 ```bash
-python art_rollout.py train "models/Qwen3-4B-Thinking-2507" "qwen3-4b-thinking-rlvr-01" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.6 --groups_per_step 10 --gradient_accumulation_steps 1 --reward_type correct,think_format
-
+python art_rollout.py train "models/Qwen3-1.7B" "qwen3-1.7b-thinking-rlvr-03" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.6 --groups_per_step 10 --gradient_accumulation_steps 1 --rewards correct,think_format --prompt_name MultiHop-RAG-Thinking
+# 效果还不错，在持续提升，但是会造成很长的思维链导致训练特别的慢，其实我们想要的是短小精干的thinking
+python art_rollout.py train "models/Qwen3-1.7B" "qwen3-1.7b-thinking-rlvr-short-3" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.6 --groups_per_step 10 --gradient_accumulation_steps 1 --rewards correct,short_think,answer_format --prompt_name MultiHop-RAG-Thinking
 ```
+
 ## 4. OOD 评估
 
 我们训练的目标是希望不仅仅在单个数据集上有好的效果，而是希望学会对 MCP 工具的使用，在相关的下游任务上都有较好的效果，我们选择 musique 数据集，使用相同的提示词和工具，验证下模型的工具使用能力能否扩展到其他任务上。

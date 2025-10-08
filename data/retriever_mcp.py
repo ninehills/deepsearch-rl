@@ -292,6 +292,7 @@ def batch_retrieve(queries: list, with_meta: bool = False) -> list:
         return []
 
 if __name__ == "__main__":
+    #TODO：存在warm up得问题，刚开始如果大并发访问会5s超时。
     logging.info(f"Starting MCP server on {args.host}:{args.port}")
     mcp.run(transport="sse", host=args.host, port=args.port)
     logging.info("MCP Server started successfully.")

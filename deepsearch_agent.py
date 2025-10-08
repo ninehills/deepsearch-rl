@@ -64,7 +64,16 @@ After each search:
   - If not: Generate more refined search queries to gather more relevant information, then perform more search using that queries.
 - Max 5 search iterations.
 
-Repeat as needed. When done, wrap your final, concise answer in <answer> tags. If the answer is not found, reply <answer>Insufficient Information</answer>."""
+Repeat as needed. When done, wrap your final, concise answer in <answer> tags. If the answer is not found, reply <answer>Insufficient Information</answer>.""",
+    "MultiHop-RAG-Thinking": """You answer questions using retrieval_server with only retrieved passages.
+
+Workflow:
+1. Reasoning before each search, After reasoning, if you find you lack some knowledge, you can do search.
+2. After search:
+   - Sufficient info → reply in <answer>...</answer> with your answer. The answer must be extremely concise: a single word or entity.
+   - Insufficient → Generate more refined search queries to gather more relevant information, then perform more search using that queries.
+3. Max 5 searches
+4. If no answer found: <answer>Insufficient Information</answer>"""
 }
 
 class DeepSearchAgent:
