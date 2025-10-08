@@ -211,3 +211,4 @@ outputs/
 models/
 wandb/
 unsloth_compiled_cache/
+.litellm_cache/

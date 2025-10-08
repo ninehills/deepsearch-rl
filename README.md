@@ -558,7 +558,9 @@ Evaluation results: {'em': 0.855, 'f1': 0.8625, 'acc': 0.86, 'precision': 0.865,
 
 非思考模型很大的问题是在工具调用之前，模型并没有进行思考（虽然从 Chat Template 上是允许助手在 Function Call 之前输出思考内容，但是在模型Post-training 中很少如此训练）。
 
-我们使用非思考模型 + RL，看模型能够通过工具调用的思考，提升工具调用的效果。
+我们使用非思考模型 + RL，看模型能否通过工具调用的思考，提升工具调用的效果。
+
+思考模型的RL比较麻烦，因为要控制 format 以及思考长度，所以我们使用较为复杂的格式奖励函数，并使用cosine 惩罚的方法来限制长输出。
 
 
 ```bash
@@ -566,6 +568,17 @@ python art_rollout.py train "models/Qwen3-1.7B" "qwen3-1.7b-thinking-rlvr-03" --
 # 效果还不错，在持续提升，但是会造成很长的思维链导致训练特别的慢，其实我们想要的是短小精干的thinking
 python art_rollout.py train "models/Qwen3-1.7B" "qwen3-1.7b-thinking-rlvr-short-3" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.6 --groups_per_step 10 --gradient_accumulation_steps 1 --rewards correct,short_think,answer_format --prompt_name MultiHop-RAG-Thinking
 ```
+
+调试了好几版奖励函数，实现了每轮的short think：
+
+![](./image.png)
+
+训练曲线也不错，但是因为引入了cosine长度奖励，每组所有rollout基本都会参与训练，所以训练时长大幅提升。不过 100 tokens 比较少，导致思考不充分，可以调整到 300-1000，这样让第一轮思考的长度变长。
+
+这里reward满分是3分，分数减去1除以二可以理解就是score，应该在60+%。
+
+![](./thinking-rl.png)
+
 
 ## 4. OOD 评估
 
@@ -626,3 +639,20 @@ evalscope eval \
 | qwen3-4b-rlvr-bg-02-ckpt0103-merged | 0.8373 |
 
 Lora 的好处就是灾难性遗忘较低，但是纯 RL 的好处是基本没有遗忘。
+
+## 5. Prompt Optimization
+
+单独研究一个话题，如果仅依靠 Automate Prompt Optimization 来优化 Prompt，Agent 效果能达到多少。
+
+opik 可以直接对接外部的 Agent，它只关心最终效果，也就是 `opik_agent.py` 和 `opik_agent_optimizer.py`。
+
+但是对于很简单的 Agent（仅依靠 System Prompt的），也可以直接用 `opik_gepa.py` 这种方法来运行。
+
+```bash
+pip install opik-optimizer opik
+
+python opik_agent_optimizer.py
+```
+
+
+
