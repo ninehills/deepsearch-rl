@@ -15,12 +15,12 @@ pip install packaging ninja numpy pandas ipython ipykernel gdown wheel setuptool
 pip install -r requirements.txt
 # 在国内为避免下载wheel失败，强制构建。
 # 如果不想构建，可以自行去 https://github.com/Dao-AILab/flash-attention/releases 下载对应版本的wheel。
-FLASH_ATTENTION_FORCE_BUILD=TRUE MAX_JOBS=16 pip install flash-attn --no-build-isolation
-# 如果有国际互联网条件，直接 pip install flash-attn --no-build-isolation
+# FLASH_ATTENTION_FORCE_BUILD=TRUE MAX_JOBS=16 pip install flash-attn --no-build-isolation
+# 如果有国际互联网条件，直接
+pip install flash-attn --no-build-isolation
 
 cd FlashRAG/
 pip install -e .
-pip install pyseismic-lsr --no-deps
 cd ../
 
 pip install -r requirements.txt
@@ -41,7 +41,7 @@ pip install -r requirements.txt
 下载 e5-base-v2 模型
 ```bash
 # 国内使用镜像站
-export HF_ENDPOINT=https://hf-mirror.com
+# export HF_ENDPOINT=https://hf-mirror.com
 huggingface-cli download --resume-download intfloat/e5-base-v2 --local-dir models/e5-base-v2
 ```
 
@@ -74,6 +74,13 @@ TODO：优化 Search MCP 的返回，更非结构一些。
 
 - MultiHop-RAG：适合 Thinking 模型，参考 https://github.com/microsoft/agent-lightning/blob/main/examples/rag/rag_agent.py
 - MultiHop-RAG-NoThink：适合 No-Thinking 模型（在多轮函数调用时没有思考过程）。
+
+下载需要的模型
+```bash
+huggingface-cli download --resume-download Qwen/Qwen3-4B-Instruct-2507 --local-dir models/Qwen3-4B-Instruct-2507 
+huggingface-cli download --resume-download Qwen/Qwen3-4B-Thinking-2507 --local-dir models/Qwen3-4B-Thinking-2507
+huggingface-cli download --resume-download Qwen/Qwen3-1.7B --local-dir models/Qwen3-1.7B
+```
 
 此外服务端默认支持并行工具调用。
 
