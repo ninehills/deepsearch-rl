@@ -13,7 +13,10 @@ conda activate deepsearch-rl
 python -m pip install --upgrade pip
 pip install packaging ninja numpy pandas ipython ipykernel gdown wheel setuptools
 pip install -r requirements.txt
-pip install flash-attn --no-build-isolation
+# 在国内为避免下载wheel失败，强制构建。
+# 如果不想构建，可以自行去 https://github.com/Dao-AILab/flash-attention/releases 下载对应版本的wheel。
+FLASH_ATTENTION_FORCE_BUILD=TRUE MAX_JOBS=16 pip install flash-attn --no-build-isolation
+# 如果有国际互联网条件，直接 pip install flash-attn --no-build-isolation
 
 cd FlashRAG/
 pip install -e .
@@ -34,6 +37,13 @@ pip install -r requirements.txt
 参见 data/GraphRAG-Bench/README.md
 
 ### 1.3 【完成】MultiHop-RAG 数据集
+
+下载 e5-base-v2 模型
+```bash
+# 国内使用镜像站
+export HF_ENDPOINT=https://hf-mirror.com
+huggingface-cli download --resume-download intfloat/e5-base-v2 --local-dir models/e5-base-v2
+```
 
 参见 data/MultiHop-RAG/README.md
 

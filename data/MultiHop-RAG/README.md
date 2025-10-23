@@ -4,6 +4,7 @@ https://github.com/yixuantt/MultiHop-RAG.git
 
 ```bash
 mkdir -p _data/
+# 依赖 git-lfs 下载具体文件
 git clone https://github.com/yixuantt/MultiHop-RAG.git
 mv MultiHop-RAG _data/
 
