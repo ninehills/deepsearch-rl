@@ -15,7 +15,7 @@ pip install packaging ninja numpy pandas ipython ipykernel gdown wheel setuptool
 pip install -r requirements.txt
 # 在国内为避免下载wheel失败，强制构建。
 # 如果不想构建，可以自行去 https://github.com/Dao-AILab/flash-attention/releases 下载对应版本的wheel。
-# FLASH_ATTENTION_FORCE_BUILD=TRUE MAX_JOBS=16 pip install flash-attn --no-build-isolation
+#FLASH_ATTENTION_FORCE_BUILD=TRUE MAX_JOBS=16 pip install flash-attn --no-build-isolation
 # 如果有国际互联网条件，直接
 pip install flash-attn --no-build-isolation
 
@@ -24,6 +24,15 @@ pip install -e .
 cd ../
 
 pip install -r requirements.txt
+
+#下载需要的模型
+# 国内使用镜像站
+# export HF_ENDPOINT=https://hf-mirror.com
+huggingface-cli download --resume-download intfloat/e5-base-v2 --local-dir models/e5-base-v2
+huggingface-cli download --resume-download Qwen/Qwen3-4B-Instruct-2507 --local-dir models/Qwen3-4B-Instruct-2507 
+huggingface-cli download --resume-download Qwen/Qwen3-4B-Thinking-2507 --local-dir models/Qwen3-4B-Thinking-2507
+huggingface-cli download --resume-download Qwen/Qwen3-1.7B --local-dir models/Qwen3-1.7B
+-```
 ```
 
 ## 1. Download corpus dataset and setup MCP server
@@ -37,13 +46,6 @@ pip install -r requirements.txt
 参见 data/GraphRAG-Bench/README.md
 
 ### 1.3 【完成】MultiHop-RAG 数据集
-
-下载 e5-base-v2 模型
-```bash
-# 国内使用镜像站
-# export HF_ENDPOINT=https://hf-mirror.com
-huggingface-cli download --resume-download intfloat/e5-base-v2 --local-dir models/e5-base-v2
-```
 
 参见 data/MultiHop-RAG/README.md
 
@@ -74,13 +76,6 @@ TODO：优化 Search MCP 的返回，更非结构一些。
 
 - MultiHop-RAG：适合 Thinking 模型，参考 https://github.com/microsoft/agent-lightning/blob/main/examples/rag/rag_agent.py
 - MultiHop-RAG-NoThink：适合 No-Thinking 模型（在多轮函数调用时没有思考过程）。
-
-下载需要的模型
-```bash
-huggingface-cli download --resume-download Qwen/Qwen3-4B-Instruct-2507 --local-dir models/Qwen3-4B-Instruct-2507 
-huggingface-cli download --resume-download Qwen/Qwen3-4B-Thinking-2507 --local-dir models/Qwen3-4B-Thinking-2507
-huggingface-cli download --resume-download Qwen/Qwen3-1.7B --local-dir models/Qwen3-1.7B
-```
 
 此外服务端默认支持并行工具调用。
 
@@ -450,21 +445,21 @@ train:   4%|███▎  | 1/26 [08:49<3:40:37, 529.48s/it, loss=-0.538, grad_n
 
 **只有正确性奖励（0-1，后面正确性奖励都改成了0-2）时的 reward 曲线，可以见到收敛缓慢。**
 
-`python art_rollout.py train "models/Qwen3-4B-Instruct-2507" "qwen3-4b-rlvr-103" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.6 --reward_type correct`
+`python art_rollout.py train "models/Qwen3-4B-Instruct-2507" "qwen3-4b-rlvr-103" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.6 --rewards correct`
 ![](./103.png)
 
 **格式奖励（0.5） + 正确性奖励（0-2）时的 reward 曲线，效果达到峰值后下降。**
-`python art_rollout.py train "models/Qwen3-4B-Instruct-2507" "qwen3-4b-rlvr-111" --max_seq_length 8192 --max_tokens 4096 --gpu_memory_utilization 0.6 --reward_type format_and_correct`
+`python art_rollout.py train "models/Qwen3-4B-Instruct-2507" "qwen3-4b-rlvr-111" --max_seq_length 8192 --max_tokens 4096 --gpu_memory_utilization 0.6 --rewards correct,answer_format`
 
 ![](./111.png)
 
 **大group推理后训练（相当于10*8 = 80 rollouts/step）。**
 
 ```bash
-python art_rollout.py train "models/Qwen3-4B-Instruct-2507" "qwen3-4b-rlvr-bg-01" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.6 --groups_per_step 10 --gradient_accumulation_steps 4 --reward_type correct
+python art_rollout.py train "models/Qwen3-4B-Instruct-2507" "qwen3-4b-rlvr-bg-01" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.6 --groups_per_step 10 --gradient_accumulation_steps 4 --rewards correct
 ## 模型训练时卡住了，修改 gradient_accumulation_steps 为 2 也会报错。感觉是Bug。
 
-python art_rollout.py train "models/Qwen3-4B-Instruct-2507" "qwen3-4b-rlvr-bg-02" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.6 --groups_per_step 10 --gradient_accumulation_steps 1 --reward_type correct
+python art_rollout.py train "models/Qwen3-4B-Instruct-2507" "qwen3-4b-rlvr-bg-02" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.6 --groups_per_step 10 --gradient_accumulation_steps 1 --rewards correct
 ```
 
 大的batch会减少训练过程中切换推理和训练的损耗，训练速度更快，同时缓解了局部最优解。但是光增加采样batch，训练batch不变，其实是off-policy的，所以需要用TIS、GSPO这种缓解off-policy的算法。
@@ -477,7 +472,7 @@ python art_rollout.py train "models/Qwen3-4B-Instruct-2507" "qwen3-4b-rlvr-bg-02
 **SFT + RL**
 
 ```bash
-python art_rollout.py train "output/lora/v1-20251003-202557/checkpoint-96" "qwen3-4b-rlvr-sft-01" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.4 --reward_type correct --groups_per_step 10 --gradient_accumulation_steps 2
+python art_rollout.py train "output/lora/v1-20251003-202557/checkpoint-96" "qwen3-4b-rlvr-sft-01" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.4 --rewards correct --groups_per_step 10 --gradient_accumulation_steps 2
 
 # 虽然文档说可以加载 lora 为base_model（https://art.openpipe.ai/getting-started/faq#can-i-start-rl-from-an-existing-sft-lora-adapter） 但是实际报错：[rank0]: TypeError: Unsloth: Your model already has LoRA adapters. Your new parameters are different.
 ```
@@ -492,7 +487,7 @@ mv output/lora/v1-20251003-202557/checkpoint-96-merged models/qwen3-4b-sft-ckpt9
 
 conda activate openpipe-art
 # Run RL
-python art_rollout.py train "models/qwen3-4b-sft-ckpt96" "qwen3-4b-rlvr-sft-02" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.6 --reward_type correct --groups_per_step 10 --gradient_accumulation_steps 1
+python art_rollout.py train "models/qwen3-4b-sft-ckpt96" "qwen3-4b-rlvr-sft-02" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.6 --rewards correct --groups_per_step 10 --gradient_accumulation_steps 1
 ```
 
 SFT 后 RL，起步的 Reward 就很高。
@@ -672,4 +667,58 @@ python opik_agent_optimizer.py
 ```
 
 
+
+
+## 一些bug 
+
+1 离线环境下 unsloth 训练失败。
+参见 https://github.com/unslothai/unsloth/issues/3367 修复（降级huggingface-hub）
+
+2 多GPU训练时vllm提示找不到nvcc
+export PATH=/usr/local/cuda-12.6/bin/:$PATH
+
+3 如何多GPU训练（使用torchtune）
+```python
+
+    # To run on a T4, we need to override some config defaults.
+    engine_args = art.dev.EngineArgs(
+        enforce_eager=True,
+        enable_sleep_mode=not args.disable_sleep_mode,
+        tensor_parallel_size=4,
+    )
+    if args.gpu_memory_utilization:
+        engine_args["gpu_memory_utilization"] = args.gpu_memory_utilization
+
+    model._internal_config = art.dev.InternalModelConfig(
+        init_args=art.dev.InitArgs(
+            max_seq_length=args.max_seq_length,
+        ),
+        engine_args=engine_args,
+        # _decouple_vllm_and_unsloth=args.decouple_vllm_and_unsloth,
+        trainer_args=art.dev.TrainerArgs(
+            gradient_accumulation_steps=args.gradient_accumulation_steps,
+        ),
+        torchtune_args=art.dev.TorchtuneArgs(model="qwen3_4b_instruct", model_type="QWEN3", async_weight_syncing=True),
+    )
+```
+
+python art_rollout_multi_gpu.py train "/workspace/app/Qwen3-4B-Instruct-2507" "qwen3-4b-rlvr-4xL20" --max_seq_length 8192 --max_tokens 3072 --gpu_memory_utilization 0.6 --groups_per_step 10 --gradient_accumulation_steps 4 --disable_sleep_mode --rewards correct
+
+多显卡的瓶颈主要是推理长尾，所以可以增加 groups，从而使用更少的steps。
+另外多 GPU 不用lora，需要限制 checkpoint的保存 https://art.openpipe.ai/features/checkpoint-deletion
+
+4. ModuleNotFoundError: No module named 'torchtune.modules.moe'
+https://github.com/OpenPipe/ART/issues/270
+
+下载 https://codeload.github.com/meta-pytorch/torchtune/zip/2344509cf83bd886538fe3e8263e5145d1afb5c2 然后安装。
+
+5. L20 显卡出现  OutOfResources: out of resource: shared memory, Required: 102144, Hardware limit: 101376. Reducing block sizes or `num_stages` may help.
+根据 https://github.com/meta-pytorch/torchtune/issues/2572 修改 torchtune 的对应内容。这样一开始就会遍历最符合显卡的 Triton Flex attention kernel.
+ triton_flex_attention_backward_31 194.5436 ms 51.5% BLOCKS_ARE_CONTIGUOUS=False, BLOCK_M1=64, BLOCK_M2=128, BLOCK_N1=128, BLOCK_N2=64, FLOAT32_PRECISION="'ieee'", GQA_SHARED_HEADS=1, HAS_FULL_BLOCKS=True, IS_DIVISIBLE=True, OUTPUT_LOGSUMEXP=True, PRESCALE_QK=False, QK_HEAD_DIM=128, QK_HEAD_DIM_ROUNDED=128, ROWS_GUARANTEED_SAFE=False, SAFE_HEAD_DIM=True, SM_SCALE=0.08838834764831843, SPARSE_KV_BLOCK_SIZE=128, SPARSE_Q_BLOCK_SIZE=128, V_HEAD_DIM=128, V_HEAD_DIM_ROUNDED=128, WRITE_DQ=True, num_stages=1, num_warps=8
+SingleProcess AUTOTUNE benchmarking takes 28.8171 seconds and 92.3453 seconds precompiling for 29 choices
+
+6. 多GPU保存Qwen3模型的时候出现 [rank0]: KeyError: 'lm_head.weight'
+https://github.com/meta-pytorch/torchtune/issues/2857
+已经修正，需要人工merge下
+https://github.com/pengyanai/torchtune/blob/6bde99996ce40cd3885e9d98a9c8a8d879735d9b/torchtune/training/checkpointing/_checkpointer.py
 
