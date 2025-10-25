@@ -23,8 +23,8 @@ python -m agentlightning.verl \
     actor_rollout_ref.rollout.n=4 \
     actor_rollout_ref.actor.strategy="fsdp2" \
     actor_rollout_ref.rollout.layered_summon=True \
-    actor_rollout_ref.model.lora_rank=32 \
-    actor_rollout_ref.model.lora_alpha=64 \
+    actor_rollout_ref.model.lora_rank=8 \
+    actor_rollout_ref.model.lora_alpha=16 \
     actor_rollout_ref.rollout.load_format="safetensors" \
     actor_rollout_ref.model.target_modules="all-linear" \
     actor_rollout_ref.actor.ppo_mini_batch_size=4 \
@@ -48,8 +48,11 @@ python -m agentlightning.verl \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=True \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
-    actor_rollout_ref.rollout.name=sglang \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
+    +actor_rollout_ref.actor.fsdp_config.mixed_precision.param_dtype=bf16 \
+    +actor_rollout_ref.actor.fsdp_config.mixed_precision.reduce_dtype=bf16 \
+    +actor_rollout_ref.actor.fsdp_config.mixed_precision.buffer_dtype=fp32 \
+    actor_rollout_ref.rollout.name=vllm \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.5 \
     actor_rollout_ref.rollout.temperature=1 \
     actor_rollout_ref.rollout.top_p=1.0 \
     actor_rollout_ref.rollout.top_k=-1 \

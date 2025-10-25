@@ -344,36 +344,6 @@ Thinking 模型训练的问题是会Chat Template 会删除掉历史 Thinking �
 
 挑选 Qwen3-4B-Thinking-2507 / Qwen3-4B-Instruct-2507 模型，对其进行 RL 训练，使用 Lora 训练
 
-### 4.1 Agent-Lightning【不支持Lora导致显存不足】
-
-环境安装（和之前的不安装到一起）
-```bash
-conda create -n agent-lightning python=3.12
-conda activate agent-lightning
-pip install torch==2.7.0 torchvision==0.22.0 torchaudio==2.7.0 --index-url https://download.pytorch.org/whl/cu128
-pip install flash-attn --no-build-isolation
-pip install vllm==0.9.2
-pip install verl==0.5.0
-
-cd agent-lightning/
-pip install -e .[dev,agent]
-```
-
-问题：
-- verl 0.5.0 不兼容 vllm + lora:  https://github.com/volcengine/verl/issues/3271
-- 升级 verl 为 main 分支后，agent-lightning 不兼容。
-
-```bash
-wandb login
-shuf data/MultiHop-RAG/_data/val.jsonl  | head -20 > data/MultiHop-RAG/_data/val_mini.jsonl
-
-# 转换 train.jsonl 和 val_mini.jsonl 为 parquet 格式，使用 Python -C
-python convert_jsonl_to_parquet.py  data/MultiHop-RAG/_data/train.jsonl data/MultiHop-RAG/_data/train.parquet
-python convert_jsonl_to_parquet.py  data/MultiHop-RAG/_data/val_mini.jsonl data/MultiHop-RAG/_data/val_mini.parquet
-
-bash -x agent-lightning-train.sh
-```
-
 ### 4.2 OpenPipe-ART
 
 #### 4.2.1 Non-Thinking Model RL
@@ -722,3 +692,47 @@ https://github.com/meta-pytorch/torchtune/issues/2857
 已经修正，需要人工merge下
 https://github.com/pengyanai/torchtune/blob/6bde99996ce40cd3885e9d98a9c8a8d879735d9b/torchtune/training/checkpointing/_checkpointer.py
 
+## Agent-Lightning Setup
+
+```bash
+conda create -n agent-lightning python=3.12
+conda activate agent-lightning
+conda install nvidia/label/cuda-12.8.1::cuda-toolkit
+
+# follow https://microsoft.github.io/agent-lightning/stable/tutorials/installation/#algorithm-specific-installation
+pip install torch==2.8.0 torchvision==0.23.0 --index-url https://download.pytorch.org/whl/cu128
+pip install flash-attn --no-build-isolation  --no-cache-dir 
+pip install vllm==0.10.2
+cd verl/
+pip install -e ./
+cd agent-lightning/
+pip install -e .[dev]
+cd ../
+pip install "openai-agents==0.3.3"
+```
+
+```bash
+wandb login
+shuf data/MultiHop-RAG/_data/val.jsonl  | head -20 > data/MultiHop-RAG/_data/val_mini.jsonl
+
+# 转换 train.jsonl 和 val_mini.jsonl 为 parquet 格式，使用 Python -C
+python convert_jsonl_to_parquet.py  data/MultiHop-RAG/_data/train.jsonl data/MultiHop-RAG/_data/train.parquet
+python convert_jsonl_to_parquet.py  data/MultiHop-RAG/_data/val_mini.jsonl data/MultiHop-RAG/_data/val_mini.parquet
+
+bash -x agent-lightning-train.sh
+```
+
+问题：
+- verl 0.5.0 不兼容 vllm + lora:  https://github.com/volcengine/verl/issues/3271
+    - 更新 verl 到最新main分支，调整兼容性。目前 Agent-Lighning 还不够稳定，需要再看看。
+- 成功运行后，第一步是 Valid，卡住不给 vllm 发请求。
+    ```bash
+    (TaskRunner pid=24793) 2025-10-25 19:07:05,822 [INFO] (Process-24793 agentlightning.server)   Task queued: rollout-e98aedbc-37c0-4a7b-b084-06baa47ec401 (mode: val, resources_id: res-2f61c166-d688-443a-a61a-29778ee4a4bd)
+    (TaskRunner pid=24793) Completed 0/20 tasks...
+    (TaskRunner pid=24793) Completed 0/20 tasks...
+    (TaskRunner pid=24793) Completed 0/20 tasks...
+    (TaskRunner pid=24793) Completed 0/20 tasks...
+    (TaskRunner pid=24793) Completed 0/20 tasks...
+    (TaskRunner pid=24793) Completed 0/20 tasks...
+    ```
+    - 这是因为 Agent-Lightning 升级到v0.2，需要大幅修改之前的实现。
