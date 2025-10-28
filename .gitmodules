@@ -10,3 +10,6 @@
 [submodule "ART"]
 	path = ART
 	url = https://github.com/ninehills/ART
+[submodule "rllm"]
+	path = rllm
+	url = https://github.com/ninehills/rllm.git
